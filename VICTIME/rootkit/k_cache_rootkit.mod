@@ -1,0 +1,2 @@
+/home/victime/v5/VICTIME/rootkit/k_cache_rootkit.o
+
