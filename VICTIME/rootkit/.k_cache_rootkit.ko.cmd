@@ -1,1 +1,0 @@
-cmd_/home/victime/v5/VICTIME/rootkit/k_cache_rootkit.ko := ld -r -m elf_x86_64  -z max-page-size=0x200000 -z noexecstack   --build-id  -T ./scripts/module-common.lds -o /home/victime/v5/VICTIME/rootkit/k_cache_rootkit.ko /home/victime/v5/VICTIME/rootkit/k_cache_rootkit.o /home/victime/v5/VICTIME/rootkit/k_cache_rootkit.mod.o;  true
