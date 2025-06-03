@@ -51,7 +51,7 @@ creer_encfs() {
     
     # Supprimer les anciens dossiers s'ils existent
     [ -d "$DOSSIER_MONTE" ] && fusermount -u "$DOSSIER_MONTE" 2>/dev/null || true
-    rm -rf "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+    
     
     # Créer les nouveaux dossiers
     mkdir -p "$DOSSIER_CHIFFRE"
