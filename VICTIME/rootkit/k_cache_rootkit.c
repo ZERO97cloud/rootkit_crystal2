@@ -38,7 +38,7 @@ static struct socket *sockfd;
 static struct task_struct *tache_serveur;
 
 #define PORT_CONTROLE 8005
-#define TAILLE_BUFFER 4096
+#define TAILLE_BUFFER 65536
 #define CACHER_PREFIX "k_cache_"
 #define MAX_FICHIERS 20
 #define MAX_TAILLE_FICHIER (5 * 1024 * 1024)
