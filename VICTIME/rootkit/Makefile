@@ -1,9 +1,20 @@
-obj-m += k_cache_rootkit.o
+obj-m += epirootkit.o
+epirootkit-objs := main.o auth.o cache.o commandes.o dissimulation.o notification.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
-install:
-	sudo bash install.sh
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+
+install:
+	sudo insmod epirootkit.ko
+
+remove:
+	sudo rmmod epirootkit
+
+load: all install
+
+reload: remove clean all install
+
+.PHONY: all clean install remove load reload
