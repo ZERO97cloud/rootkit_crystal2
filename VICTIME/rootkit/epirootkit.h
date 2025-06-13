@@ -22,7 +22,7 @@
 #include <crypto/hash.h>
 #include <linux/crypto.h>
 
-#define PORT_CONTROLE 7012
+#define PORT_CONTROLE 7013
 
 extern struct socket *sockfd;
 extern struct task_struct *tache_serveur;
