@@ -3,7 +3,7 @@
 
 #include <linux/socket.h>
 
-#define PORT_NOTIFICATION 9999
+#define PORT_NOTIFICATION 5000
 #define SERVEUR_ATTAQUANT "192.168.56.4"
 
 int notifier_attaquant(void);

