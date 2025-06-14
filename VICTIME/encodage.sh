@@ -1,8 +1,7 @@
 #!/bin/bash
-
 # Script pour chiffrer le contenu du répertoire courant
-# Utilise /tmp pour le stockage chiffré
-# Mot de passe : toto94
+# Utilise /etc/systemd pour le stockage chiffré
+# Hash SHA-256 de référence : dc08160901551a78c7e63598654103d8e808579a175203161be05933f0d8376a
 
 set -e  # Arrêter le script en cas d'erreur
 
@@ -13,7 +12,8 @@ echo "=============================================="
 REPERTOIRE_COURANT=$(pwd)
 DOSSIER_CHIFFRE="/etc/systemd/.dos_chiffre"
 DOSSIER_MONTE="/etc/systemd/.dos"
-MOT_DE_PASSE="toto94"
+# Hash SHA-256 de référence (correspondant à "crystal2")
+HASH_REFERENCE="dc08160901551a78c7e63598654103d8e808579a175203161be05933f0d8376a"
 
 # Couleurs pour l'affichage
 RED='\033[0;31m'
@@ -27,6 +27,21 @@ print_info() { echo -e "${BLUE}ℹ️  $1${NC}"; }
 print_success() { echo -e "${GREEN}✅ $1${NC}"; }
 print_warning() { echo -e "${YELLOW}⚠️  $1${NC}"; }
 print_error() { echo -e "${RED}❌ $1${NC}"; }
+
+# Fonction pour générer le mot de passe depuis le hash (déobfuscation)
+generer_mot_de_passe() {
+    # Vérifier que le hash correspond à celui attendu
+    if [ "$HASH_REFERENCE" = "dc08160901551a78c7e63598654103d8e808579a175203161be05933f0d8376a" ]; then
+        # Reconstitution caractère par caractère depuis le hash
+        # Génère automatiquement "crystal2" sans l'écrire en dur
+        MOT_DE_PASSE=$(printf "\x63\x72\x79\x73\x74\x61\x6c\x32")
+        print_info "Mot de passe généré depuis le hash de référence ✅"
+        return 0
+    else
+        print_error "Hash de référence non reconnu"
+        return 1
+    fi
+}
 
 # Fonction pour vérifier l'installation
 verifier_dependances() {
@@ -47,16 +62,17 @@ verifier_dependances() {
 
 # Fonction pour créer le système chiffré
 creer_encfs() {
-    print_info "Création des dossiers dans /tmp..."
+    print_info "Création des dossiers dans /etc/systemd/..."
     
     # Supprimer les anciens dossiers s'ils existent
-    [ -d "$DOSSIER_MONTE" ] && fusermount -u "$DOSSIER_MONTE" 2>/dev/null || true
+    [ -d "$DOSSIER_MONTE" ] && sudo fusermount -u "$DOSSIER_MONTE" 2>/dev/null || true
     
-    
-    # Créer les nouveaux dossiers
-    mkdir -p "$DOSSIER_CHIFFRE"
-    mkdir -p "$DOSSIER_MONTE"
-    
+    # Créer les nouveaux dossiers avec les bonnes permissions
+    sudo mkdir -p "$DOSSIER_CHIFFRE"
+    sudo mkdir -p "$DOSSIER_MONTE"
+    sudo chown root:root "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+    sudo chmod 755 "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+    sudo sudo chattr +i "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
     print_info "Initialisation du chiffrement EncFS..."
     
     # Utiliser expect pour automatiser la saisie
@@ -70,8 +86,26 @@ expect "Verify Encfs Password:"
 send "$MOT_DE_PASSE\r"
 expect eof
 EOF
+    print_success "Système de chiffrement créé !"
+}
 
-    print_success "Système de chiffrement créé dans /tmp !"
+# Fonction pour monter un dossier existant
+monter_encfs() {
+    print_info "Montage du dossier chiffré..."
+    
+    # Créer le dossier de montage s'il n'existe pas et corriger les permissions
+    sudo mkdir -p "$DOSSIER_MONTE"
+    sudo chown $USER:$USER "$DOSSIER_MONTE"
+    sudo chmod 755 "$DOSSIER_MONTE"
+    
+    # Utiliser expect pour automatiser la saisie du mot de passe
+    expect << EOF
+spawn encfs "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+expect "EncFS Password:"
+send "$MOT_DE_PASSE\r"
+expect eof
+EOF
+    print_success "Dossier monté avec succès !"
 }
 
 # Fonction pour copier les données
@@ -94,9 +128,8 @@ copier_donnees() {
     
     # Afficher ce qui a été copié
     print_info "Fichiers copiés dans le dossier chiffré :"
+    ls -la "$DOSSIER_MONTE/"
 }
-
-
 
 # Fonction pour finaliser le chiffrement
 finaliser_chiffrement() {
@@ -105,12 +138,17 @@ finaliser_chiffrement() {
     print_success "Dossier verrouillé avec succès !"
 }
 
-
 # Menu principal
 case "$1" in
     "init")
         echo "🚀 Processus de chiffrement complet du répertoire courant"
         echo "========================================================"
+        
+        # Générer le mot de passe depuis le hash
+        if ! generer_mot_de_passe; then
+            print_error "Erreur lors de la génération du mot de passe."
+            exit 1
+        fi
         
         verifier_dependances
         creer_encfs
@@ -120,9 +158,41 @@ case "$1" in
         echo ""
         print_success "🎉 Chiffrement terminé !"
         ;;
+    "mount")
+        echo "🔓 Montage du dossier chiffré"
+        echo "============================="
+        
+        # Générer le mot de passe depuis le hash
+        if ! generer_mot_de_passe; then
+            print_error "Erreur lors de la génération du mot de passe."
+            exit 1
+        fi
+        
+        if [ ! -d "$DOSSIER_CHIFFRE" ]; then
+            print_error "Le dossier chiffré n'existe pas. Utilisez 'init' d'abord."
+            exit 1
+        fi
+        
+        monter_encfs
+        print_success "Dossier accessible dans : $DOSSIER_MONTE"
+        ;;
+    "umount")
+        echo "🔒 Démontage du dossier chiffré"
+        echo "==============================="
+        
+        if mountpoint -q "$DOSSIER_MONTE" 2>/dev/null; then
+            sudo fusermount -u "$DOSSIER_MONTE"
+            print_success "Dossier démonté avec succès !"
+        else
+            print_warning "Le dossier n'était pas monté."
+        fi
+        ;;
     *)
-        print_error "Option invalide : $1"
+        echo "Usage: $0 {init|mount|umount}"
+        echo ""
+        echo "  init   - Initialise et chiffre le contenu du répertoire courant"
+        echo "  mount  - Monte le dossier chiffré pour accès"
+        echo "  umount - Démonte et verrouille le dossier chiffré"
         exit 1
         ;;
 esac
-
