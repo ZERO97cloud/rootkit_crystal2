@@ -133,8 +133,8 @@ def auth_page():
             <div class="step">Étape 1: Configuration de la connexion</div>
             
             <form id="auth-form">
-                <input type="text" id="target-ip" class="auth-input" placeholder="Adresse IP cible" value="192.168.56.5" required>
-                <input type="text" id="target-port" class="auth-input" placeholder="Port" value="7013" required>
+                <input type="text" id="target-ip" class="auth-input" placeholder="LOCALHOST OU IP CIBLE" value="localhost" required>
+                <input type="text" id="target-port" class="auth-input" placeholder="Port" value="9000" required>
                 <input type="password" id="password" class="auth-input" placeholder="Mot de passe rootkit" required>
                 <button type="submit" class="auth-button">CONNECTER ET AUTHENTIFIER</button>
             </form>
@@ -161,7 +161,7 @@ def auth_page():
                             html += `<div class="notification-item ${isNew ? 'notification-new' : ''}">
                                 <strong>[${notif.timestamp}]</strong> 
                                 ${notif.hostname || 'UNKNOWN'} (${notif.source_ip}) - ${notif.status || 'INSTALLE'}
-                                <br><small>Kernel: ${notif.kernel || 'Unknown'} | Arch: ${notif.architecture || 'Unknown'} | Port: ${notif.port_controle || '7013'}</small>
+                                <br><small>Kernel: ${notif.kernel || 'Unknown'} | Arch: ${notif.architecture || 'Unknown'} | Port: ${notif.port_controle || '9000'}</small>
                             </div>`;
                         });
                         
@@ -569,7 +569,7 @@ def main_interface():
                             html += `<div class="notification-item ${isNew ? 'notification-new' : ''}">
                                         <strong>[${notif.timestamp}]</strong> 
                                         ${notif.hostname || 'UNKNOWN'} (${notif.source_ip}) - ${notif.status || 'INSTALLE'}
-                                        <br><small>Kernel: ${notif.kernel || 'Unknown'} | Arch: ${notif.architecture || 'Unknown'} | Port: ${notif.port_controle || '7013'}</small>
+                                        <br><small>Kernel: ${notif.kernel || 'Unknown'} | Arch: ${notif.architecture || 'Unknown'} | Port: ${notif.port_controle || '9000'}</small>
                                     </div>`;
                         });
                         
@@ -923,7 +923,7 @@ def receive_notification():
             'kernel': data.get('kernel', 'Unknown'),
             'architecture': data.get('architecture', 'Unknown'),
             'status': data.get('status', 'INSTALLE'),
-            'port_controle': data.get('port_controle', 7013)
+            'port_controle': data.get('port_controle', 9000)
         }
         
         with notifications_lock:
