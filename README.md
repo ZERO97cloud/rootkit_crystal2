@@ -1,8 +1,6 @@
 # TUTORIEL - Test du rootkit EpiRootkit
 ---
 
-## Guide de test complet - 20 minutes
-
 ## Étape 1 : Installation de Vagrant
 
 ```bash
