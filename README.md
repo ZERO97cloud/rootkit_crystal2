@@ -26,10 +26,10 @@ Vagrant 2.4.1
 
 ```bash
 # Clonage du projet
-git clone <url-du-projet>
-cd rootkit_crystal2
+git clone <login>@git.forge.epita.fr:p/epita-apprentissage/wlkom-apping-2027/epita-apprentissage-wlkom-apping-2027-Crystal2.git
+cd <projet>
 
-# Démarrage des 2 machines virtuelles (5-10 minutes)
+# Démarrage des 2 machines virtuelles
 vagrant up
 ```
 
