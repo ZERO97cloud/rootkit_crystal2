@@ -118,46 +118,23 @@ Chiffrement terminé !
 
 ```bash
 # Installation automatique du rootkit
-sudo bash install.sh
+make install
 ```
 
 **Sortie attendue :**
 ```
-make -C /lib/modules/5.4.0-216-generic/build M=/home/vagrant/rootkit clean
-make -C /lib/modules/5.4.0-216-generic/build M=/home/vagrant/rootkit modules
-  CC [M]  /home/vagrant/rootkit/main.o
-  CC [M]  /home/vagrant/rootkit/auth.o
-  CC [M]  /home/vagrant/rootkit/cache.o
-  CC [M]  /home/vagrant/rootkit/commandes.o
-  CC [M]  /home/vagrant/rootkit/dissimulation.o
-  CC [M]  /home/vagrant/rootkit/notification.o
-  LD [M]  /home/vagrant/rootkit/epirootkit.o
-  Building modules, stage 2.
-  MODPOST 1 modules
-  LD [M]  /home/vagrant/rootkit/epirootkit.ko
-Created symlink /etc/systemd/system/multi-user.target.wants/network-cache.service → /etc/systemd/system/network-cache.service.
-Installation et persistance configurées
-Répertoires secrets créés et protégés
-
-=== Vérification de l'installation ===
-Status du service:
-● network-cache.service - Network Cache Module
-     Loaded: loaded (/etc/systemd/system/network-cache.service; enabled; vendor preset: enabled)
-     Active: inactive (dead)
-
-Test de connexion au rootkit:
-Rootkit actif sur port 8005
-
-Test de dissimulation:
-fichiercache caché
-
-Installation terminée !
+vagrant@ubuntu-focal:~/rootkit$ make install 
+sudo bash install.sh
+Compilation...
+Installation du module...
+Configuration de la persistance...
+Installation terminee
 ```
 
 **À ce moment, vous devriez voir apparaître dans le Terminal 1 (attaquant) :**
 ```
-[NOTIFICATION REÇUE] {'type': 'ROOTKIT_ALERT', 'hostname': 'ubuntu-focal', ...}
-[ALERT] Nouveau rootkit installé sur ubuntu-focal (192.168.56.5)
+[2025-06-15 20:26:01] ubuntu-focal (192.168.56.1) - INSTALLE ET ACTIF
+Kernel: Linux 5.4.0-216-generic | Arch: x86_64 | Port: 8005 
 ```
 
 ---
@@ -172,16 +149,13 @@ Installation terminée !
 vagrant ssh attaquant
 cd /home/vagrant/attacking_program
 
-# Lancement du script de configuration automatique du tunnel
+# Lancement du script de configuration automatique du tunnel pour une connection sécurisée
 bash TUNNELSSH.sh
 ```
 
 **Sortie attendue :**
 ```
-Scan réseau 10.0.3.0/24 (port 8005)…
-10.0.3.11 : port 8005 ouvert
-Création tunnel SSH (vagrant@10.0.3.11) → localhost:9000
-Tunnel prêt ! Lancement de interface9000.sh…
+Tunnel SSH lancé sur le port 9000.
 ```
 
 ---
@@ -190,9 +164,8 @@ Tunnel prêt ! Lancement de interface9000.sh…
 
 **Sur la page d'accueil, vous verrez :**
 ```
-ALERTES ROOTKIT EN TEMPS RÉEL (1)
-[2025-06-15 14:23:15] ubuntu-focal (10.0.3.11) - INSTALLE ET ACTIF
-Kernel: Linux 5.4.0-216-generic | Arch: x86_64 | Port: 8005
+[2025-06-15 20:26:01] ubuntu-focal (192.168.56.1) - INSTALLE ET ACTIF
+Kernel: Linux 5.4.0-216-generic | Arch: x86_64 | Port: 8005 
 ```
 
 ### 7.2 Configuration de la connexion
@@ -437,8 +410,9 @@ sudo bash install.sh
 
 ```bash
 # Suppression de l'environnement de test
-vagrant destroy
 # Supprime complètement les VMs
+vagrant destroy
+
 
 ```
 
