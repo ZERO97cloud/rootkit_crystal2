@@ -347,7 +347,7 @@ vagrant ssh attaquant
 
 # Relancement du tunnel automatique
 cd /home/vagrant/attacking_program
-./configuration_root.sh
+bash TUNNELSSH.sh
 ```
 
 ### 10.3 Vérification après redémarrage
