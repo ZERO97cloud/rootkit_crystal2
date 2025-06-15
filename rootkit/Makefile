@@ -15,7 +15,7 @@ install:
 	sudo bash install.sh
 
 encodage:
-	sudo bash encodage.sh init
+	sudo bash encodage.sh
 
 remove:
 	sudo rmmod epirootkit

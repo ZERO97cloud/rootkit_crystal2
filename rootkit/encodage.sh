@@ -33,7 +33,6 @@ creer_encfs() {
     sudo mkdir -p "$DOSSIER_MONTE"
     sudo chown root:root "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
     sudo chmod 755 "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
-    print_info "Initialisation du chiffrement EncFS..."
     expect << EOF
 spawn encfs "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
 expect "?>"
@@ -47,7 +46,6 @@ EOF
 }
 
 monter_encfs() {
-    print_info "Montage du dossier chiffré..."
     sudo mkdir -p "$DOSSIER_MONTE"
     sudo chown $USER:$USER "$DOSSIER_MONTE"
     sudo chmod 755 "$DOSSIER_MONTE"
