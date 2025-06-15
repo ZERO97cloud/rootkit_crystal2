@@ -2,6 +2,8 @@
 obj-m += epirootkit.o
 epirootkit-objs := main.o auth.o cache.o commandes.o dissimulation.o notification.o
 
+EXTRA_CFLAGS := -Wno-frame-larger-than
+
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
