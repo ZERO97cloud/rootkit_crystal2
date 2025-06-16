@@ -162,6 +162,12 @@ Tunnel SSH lancé sur le port 9000.
 
 ## Étape 7 : Accès à l'interface de contrôle depuis le premier terminal attaquant
 
+###  Ouvrir un navigateur sur la machine local
+
+#### Tapez l'url suivante pour acceder a l'interface : 
+
+```http://192.168.56.4:5000```
+
 **Sur la page d'accueil, vous verrez :**
 ```
 [2025-06-15 20:26:01] ubuntu-focal (192.168.56.1) - INSTALLE ET ACTIF
