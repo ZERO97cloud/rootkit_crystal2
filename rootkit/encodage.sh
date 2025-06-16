@@ -33,6 +33,8 @@ creer_encfs() {
     sudo mkdir -p "$DOSSIER_MONTE"
     sudo chown root:root "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
     sudo chmod 755 "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+    sudo chattr +i "$DOSSIER_CHIFFRE"
+    sudo chattr +i "$DOSSIER_MONTE"
     expect << EOF
 spawn encfs "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
 expect "?>"
