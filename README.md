@@ -401,7 +401,7 @@ sudo bash install.sh
 - Démarrage des VMs
 - Installation rootkit victime
 - Tunnel SSH sécurisé établi
-- Interface attaquant opérationnelle sur 
+- Interface attaquant opérationnelle sur :  http://192.168.56.4:5000 
 - Notification automatique reçue
 - Connexion via interface web chiffrée
 - Exécution de commandes
