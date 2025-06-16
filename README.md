@@ -96,7 +96,7 @@ vagrant ssh victime
 cd /home/vagrant/rootkit
 
 # Lancement du système de chiffrement des données
-sudo bash encodage.sh init
+make encodage
 ```
 
 **Sortie attendue :**
