@@ -148,7 +148,7 @@ Dans notre implémentation, l'interface se connecte à `localhost:9000` plutôt 
    - Démarrage de l'interface web via `interface9000.sh`
 
 2. **Connexion** :
-   - Accès à l'interface web (http://localhost:5000)
+   - Accès à l'interface web (http://192.168.56.4:5000)
    - Configuration des paramètres de connexion (localhost:9000)
    - Authentification avec le mot de passe du rootkit
 
