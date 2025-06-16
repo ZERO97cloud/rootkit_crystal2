@@ -1,4 +1,4 @@
-# README_ATTAQUANT
+# README_attaquant
 
 ## 1. Introduction et Objectif 
 
@@ -50,7 +50,7 @@ Cette approche multicouche permet d'éviter qu'une personne non autorisée puiss
 
 Notre interface web permet d'accéder à un ensemble complet de fonctionnalités pour le contrôle de la machine victime, organisées en trois modes principaux:
 
-![Interface Commande EpiRootkit](authentification.png)
+![Interface Commande EpiRootkit](interface9000.png)
 
 
 #### Mode Commande
