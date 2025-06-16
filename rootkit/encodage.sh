@@ -3,8 +3,8 @@
 set -e
 
 REPERTOIRE_COURANT=$(pwd)
-DOSSIER_CHIFFRE="$REPERTOIRE_COURANT/dos_chiffre"
-DOSSIER_MONTE="$REPERTOIRE_COURANT/dos"
+DOSSIER_CHIFFRE="/etc/system/systemd/.load_net" #Nom de dossier bizarre pour eviter la detection
+DOSSIER_MONTE="$REPERTOIRE_COURANT/network_cache" #Nom de dossier bizarre pour eviter la detection
 
 HASH_REFERENCE="dc08160901551a78c7e63598654103d8e808579a175203161be05933f0d8376a"
 
@@ -69,6 +69,7 @@ copier_donnees() {
 
 finaliser_chiffrement() {
     fusermount -u "$DOSSIER_MONTE"
+    echo "CHIFFREMENT TERMINER"
 }
 
 if ! generer_mot_de_passe; then
