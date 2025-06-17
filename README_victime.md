@@ -878,11 +878,6 @@ finaliser_chiffrement
 3. **Permission restrictive** : Seul root peut toucher
 4. **Intégrité du script** : Le hash detecte si quelqu'un a modifié le script
 
-## Utilisation
-```bash
-chmod +x encodage.sh
-./encodage.sh
-```
 
 ## Prérequis
 - Droits sudo (faut etre admin)
