@@ -672,6 +672,10 @@ Le script `install.sh` automatise completement le deploiement :
 5. **Configuration** des mecanismes de dissimulation
 
 
+
+
+-----------------------
+
 # encodage.sh
 
 ## Description
