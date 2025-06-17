@@ -235,7 +235,7 @@ err = kernel_listen(sockfd, 5);
 L'authentification utilise un hachage SHA-256 pour securiser l'acces :
 
 ```c
-// Dans auth.c - Hash du mot de passe "crystal2"
+// Dans auth.c - Hash du mot de passe "crystal2025"
 static const char PASSWORD_HASH[] = "1e29e7045275a60d15275bf8e97b5a47644844f2bca62d70476e11ad0543e000";
 ```
 
