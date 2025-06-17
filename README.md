@@ -35,13 +35,25 @@ vagrant up
 
 **Sortie attendue :**
 ```
-Bringing machine 'attaquant' up with 'virtualbox' provider...
-Bringing machine 'victime' up with 'virtualbox' provider...
-==> attaquant: Importing base box 'ubuntu/focal64'...
-==> victime: Importing base box 'ubuntu/focal64'...
 ...
-==> attaquant: Machine booted and ready!
-==> victime: Machine booted and ready!
+    attaquant: 4: enp0s9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    attaquant:     link/ether 08:00:27:74:7b:53 brd ff:ff:ff:ff:ff:ff
+    attaquant:     inet 10.0.3.10/24 brd 10.0.3.255 scope global enp0s9
+    attaquant:        valid_lft forever preferred_lft forever
+    attaquant:     inet6 fe80::a00:27ff:fe74:7b53/64 scope link
+    attaquant:        valid_lft forever preferred_lft forever
+...
+    victime:        valid_lft 86376sec preferred_lft 14376sec
+    victime:     inet6 fe80::ca:62ff:feef:6a24/64 scope link
+    victime:        valid_lft forever preferred_lft forever
+    victime: 3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    victime:     link/ether 08:00:27:14:aa:a6 brd ff:ff:ff:ff:ff:ff
+    victime:     inet 10.0.3.11/24 brd 10.0.3.255 scope global enp0s8
+    victime:        valid_lft forever preferred_lft forever
+    victime:     inet6 fe80::a00:27ff:fe14:aaa6/64 scope link
+    victime:        valid_lft forever preferred_lft forever
+
+
 ```
 
 ---
