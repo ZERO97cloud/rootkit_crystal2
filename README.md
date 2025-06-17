@@ -81,12 +81,23 @@ Serveur Flask démarré
 Dossier uploads: /tmp/flask_uploads
 Interface web: http://0.0.0.0:5000
 Upload via wget disponible
+ * Serving Flask app 'interface9000'
+ * Debug mode: on
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
  * Running on all addresses (0.0.0.0)
  * Running on http://127.0.0.1:5000
- * Running on http://192.168.56.4:5000
+ * Running on http://10.0.2.15:5000
+Press CTRL+C to quit
+ * Restarting with stat
+Serveur Flask démarré
+Dossier uploads: /tmp/flask_uploads
+Interface web: http://0.0.0.0:5000
+Upload via wget disponible
+ * Debugger is active!
+ * Debugger PIN: 132-006-663
 ```
 
-**Interface accessible sur : http://192.168.56.4:5000**
+**Interface accessible sur : http://192.168.56.4:5000 depuis la machine hote**
 
 **Important : Laisser ce terminal ouvert pour recevoir les notifications**
 
