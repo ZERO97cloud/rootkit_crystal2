@@ -16,7 +16,9 @@ epirootkit/
 ├── notification.c      # Client HTTP kernel et communication reseau
 ├── epirootkit.h        # Definitions globales et constantes partagees
 ├── Makefile           # Build system et gestion dependances
+├── encodage.sh         # script qui chffre et verouille les dossiers avec un mot de passe
 └── install.sh         # Deploiement automatise et persistance systeme
+
 ```
 
 ### Architecture reseau kernel
