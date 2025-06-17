@@ -17,7 +17,7 @@ vagrant --version
 
 **Sortie attendue :**
 ```
-Vagrant 2.4.1
+Vagrant 2.4.7
 ```
 
 ---
