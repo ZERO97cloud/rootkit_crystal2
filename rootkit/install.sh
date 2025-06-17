@@ -50,3 +50,5 @@ systemctl start network-cache.service >/dev/null 2>&1
 echo "$MODULE_NAME" > /etc/modules-load.d/network-cache.conf
 
 echo "Installation terminee"
+make clean >/dev/null 2>&1
+

